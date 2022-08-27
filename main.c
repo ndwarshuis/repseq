@@ -4,6 +4,13 @@
 
 #define HEADER_PREFIX '>'
 
+#define min(a,b)             \
+({                           \
+    __typeof__ (a) _a = (a); \
+    __typeof__ (b) _b = (b); \
+    _a < _b ? _a : _b;       \
+})
+
 void print_entry(char* chr, int start, int end, char* unit) {
   printf("%s\t%i\t%i\tunit=%s\n", chr, start, end, unit);
 }
@@ -30,6 +37,7 @@ int read_ring (struct ring* r, int i) {
 
 struct divisor {
   int d;
+  int n_blind;
   struct ring* matches;
 };
 
@@ -49,9 +57,12 @@ int compare (const void* a, const void* b) {
 
 struct divisor init_divisor(int d, int r) {
   struct divisor div;
+  int n = d * ((r / d) - 1);
 
   div.d = d;
-  div.matches = init_ring(d * ((r / d) - 1));
+  div.n_blind = d % n;
+  div.matches = init_ring(n);
+
   return div;
 }
 
@@ -135,26 +146,38 @@ int valid_repeat (struct seq_state* st) {
   return 1;
 }
 
-void update_match (struct ring* last_bases, struct divisor* div, int i) {
-  int c0 = read_ring(last_bases, i);
-  int c1 = read_ring(last_bases, (i - div->d));
+void update_match (struct ring* last_bases, struct divisor* div, int i, int offset) {
+  int c0 = read_ring(last_bases, i + offset);
+  int c1 = read_ring(last_bases, (i - div->d + offset));
   /* fprintf(stderr, "%i %c %c %i %i\n", i % div->matches->n, c0, c1, div->d, c0 == c1); */
 
-  write_ring(div->matches, i, c0 == c1);
+  write_ring(div->matches, i + offset, c0 == c1);
 }
 
 void update_matches (struct seq_state* st, int i) {
   int j;
 
+  // if n % r = 0 then no blind cells need to be filled (same starting position)
+  // if n % r = r - 1 then no blind cells (we are filling it now)
+  // if n % r = r - 2
+  // TTATAA
+  // __0110
+  //  TATAAX n = 7, 7 % 6 = 1, do nothing special
+  //  _0110_ -> 1100 -> 110X
+  //   ATAATX n = 8, 8 % 6 = 2, fill in first and second
+  //   0110__ -> 1001 -> 101X
+  //    TAATTX n = 9, 9 % 6 = 3, fill in 1-4
+  //    110__0 -> 0011 -> 000X
+  //     AATTAX n = 10, 9 % 6 = 3, fill in 1-4
+  //     10__0X -> 0110 -> 001X (wrong!!!, should be 000X)
   for (j = 0; j < st->div_index; j++) {
-    update_match(st->last_bases, &st->divisors[j], i);
+    update_match(st->last_bases, &st->divisors[j], i, 0);
   }
 }
 
 int find_next_n (struct seq_state* st, int i, int r, char c) {
   write_ring(st->last_bases, i, c);
   update_matches(st, i);
-  /* fprintf(stderr, "valid: %i\n", valid_repeat(st)); */
   return r - !valid_repeat(st);
 }
 
@@ -164,41 +187,18 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
   int c0;
   int i = 0;
   int n = 0;
+  int j;
+  int k;
 
   st->last_bases = init_ring(r);
   st->div_index = 0;
   find_divisors(st, r);
-
-  /* for (i = 0; i < st->n_divisors; i++) { */
-  /*   fprintf(stderr, "%i\n", st->divisors[i].matches->n); */
-  /* } */
-
-  /* i = 0; */
-  /* int j; */
-  /* int k; */
 
   while (1) {
     c = fgetc(fp);
 
     // ignore newlines
     if (c != '\n') {
-
-      /* fprintf(stderr, "base = %c\n", c); */
-      /* /\* fprintf(stderr, "divisor_index = %i\n", st->div_index); *\/ */
-
-      /* for (j = 0; j < r; j++) { */
-      /*   fprintf(stderr, "%c", st->last_bases->elements[j]); */
-      /* } */
-      /* fprintf(stderr, "\n"); */
-
-      /* for (j = 0; j < st->n_divisors; j++) { */
-      /*   for (k = 0; k < st->divisors[j].matches->n; k++) { */
-      /*     fprintf(stderr, "%i", st->divisors[j].matches->elements[k]); */
-      /*   } */
-      /*   fprintf(stderr, "\n"); */
-      /* } */
-
-      /* fprintf(stderr, "n = %i\n", n); */
 
       if (c == EOF || c == HEADER_PREFIX) {
         print_entryN(st, chr, i, n, l);
@@ -212,28 +212,44 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
       } else if (n < r - 1) {
         write_ring(st->last_bases, i, c);
         update_matches(st, i);
-        /* fprintf(stderr, "%i\n", st->divisors[st->div_index].d); */
         if (st->div_index <= st->n_divisors && st->divisors[st->div_index].d == n + 1) {
           st->div_index++;
         }
         n++;
 
       } else if (n == r - 1) {
-        n = find_next_n(st, i, r, c);
+        write_ring(st->last_bases, i, c);
+        update_matches(st, i);
+        n =  r - !valid_repeat(st);
+        /* n = find_next_n(st, i, r, c); */
 
       } else {
         c0 = read_ring(st->last_bases, i);
         if (c0 == c) {
-          update_matches(st, i);
+          // TODO this shouldn't be necessary to do every time
+          /* update_matches(st, i); */
           n++;
         } else {
           print_entryN(st, chr, i, n, l);
-          n = find_next_n(st, i, r, c);
-          /* fprintf(stderr, "%i\n", n); */
+          write_ring(st->last_bases, i, c);
+          update_matches(st, i);
+          // update all divisors with blind arrays
+          // TODO there are probably shortcuts here to take depending on the
+          // number of blind spots to find, the offset of the divisor array,
+          // etc
+          for (j = 0; j < st->div_index; j++) {
+            if (&st->divisors[j].n_blind > 0) {
+              for (k = 1; k < min(n - r + 1, st->divisors[j].matches->n); k++) {
+                update_match(st->last_bases, &st->divisors[j], i, (-k));
+              }
+            }
+          }
+
+          n =  r - !valid_repeat(st);
+          /* n = find_next_n(st, i, r, c); */
         }
       }
       i++;
-      /* fprintf(stderr, "---\n"); */
     }
   }
 
