@@ -4,11 +4,18 @@
 
 #define HEADER_PREFIX '>'
 
-#define min(a,b)             \
+/* #define min(a,b)             \ */
+/* ({                           \ */
+/*     __typeof__ (a) _a = (a); \ */
+/*     __typeof__ (b) _b = (b); \ */
+/*     _a < _b ? _a : _b;       \ */
+/* }) */
+
+#define max(a,b)             \
 ({                           \
     __typeof__ (a) _a = (a); \
     __typeof__ (b) _b = (b); \
-    _a < _b ? _a : _b;       \
+    _a > _b ? _a : _b;       \
 })
 
 void print_entry(char* chr, int start, int end, char* unit) {
@@ -155,22 +162,25 @@ int valid_repeat (struct seq_state* st, int i) {
   return 1;
 }
 
-/* void update_match (struct ring* last_bases, struct divisor* div, int i, int offset) { */
-/*   int c0 = read_ring(last_bases, i + offset); */
-/*   int c1 = read_ring(last_bases, (i - div->d + offset)); */
-
-/*   write_ring(div->matches, i + offset, c0 == c1); */
-/* } */
-
-void update_matches (struct seq_state* st, int i) {
+void update_match (struct ring* last_bases, struct divisor* div, int i, int offset) {
   int c0;
   int c1;
 
+  c0 = read_ring(last_bases, i + offset);
+  c1 = read_ring(last_bases, (i - div->d + offset));
+
+  write_ring(div->matches, i + offset, c0 == c1);
+}
+
+void update_matches (struct seq_state* st, int i) {
+  /* int c0; */
+  /* int c1; */
+
   for (int j = 0; j < st->div_index; j++) {
-    c0 = read_ring(st->last_bases, i);
-    c1 = read_ring(st->last_bases, (i - st->divisors[j].d));
-    write_ring(st->divisors[j].matches, i, c0 == c1);
-    /* update_match(st->last_bases, &st->divisors[j], i, 0); */
+    /* c0 = read_ring(st->last_bases, i); */
+    /* c1 = read_ring(st->last_bases, (i - st->divisors[j].d)); */
+    /* write_ring(st->divisors[j].matches, i, c0 == c1); */
+    update_match(st->last_bases, &st->divisors[j], i, 0);
   }
 }
 
@@ -187,6 +197,9 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
   int c0;
   int i = 0;
   int n = 0;
+  int j;
+  int k;
+  int shift;
 
   st->last_bases = init_ring(r);
   st->div_index = 0;
@@ -243,7 +256,7 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
         c0 = read_ring(st->last_bases, i);
         if (c0 == c) {
           // TODO this shouldn't be necessary to do every time
-          update_matches(st, i);
+          /* update_matches(st, i); */
           n++;
         } else {
           print_entryN(st, chr, i, n, l);
@@ -251,16 +264,16 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
           update_matches(st, i);
 
           // update all divisors with blind arrays
-          // TODO there are probably shortcuts here to take depending on the
-          // number of blind spots to find, the offset of the divisor array,
-          // etc
-          /* for (j = 0; j < st->div_index; j++) { */
-          /*   if (&st->divisors[j].n_required > 0) { */
-          /*     for (k = 1; k < min(n - r + 1, st->divisors[j].matches->n); k++) { */
-          /*       update_match(st->last_bases, &st->divisors[j], i, (-k)); */
-          /*     } */
-          /*   } */
-          /* } */
+          shift = (n + 1) % r;
+          if (shift > 1) {
+            for (j = 0; j < st->n_divisors; j++) {
+              if (st->divisors[j].n_empty > 0) {
+                for (k = max(1, shift - st->divisors[j].n_empty); k < shift; k++) {
+                  update_match(st->last_bases, &st->divisors[j], i, (-k));
+                }
+              }
+            }
+          }
 
           n =  r - !valid_repeat(st, i);
           /* n = find_next_n(st, i, r, c); */
