@@ -199,6 +199,9 @@ void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
   int j;
   int k;
   int shift;
+  int is_even;
+
+  is_even = !(r % 2);
 
   st = malloc(sizeof(*st));
 
@@ -269,11 +272,9 @@ void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
           // update all divisors with blind arrays
           shift = (n + 1) % r;
           if (shift > 1) {
-            for (j = 0; j < st->n_divisors; j++) {
-              if (st->divisors[j].n_empty > 0) {
-                for (k = max(1, shift - st->divisors[j].n_empty); k < shift; k++) {
-                  update_match(st->last_bases, &st->divisors[j], i - k);
-                }
+            for (j = 0; j < st->n_divisors - is_even; j++) {
+              for (k = max(1, shift - st->divisors[j].n_empty); k < shift; k++) {
+                update_match(st->last_bases, &st->divisors[j], i - k);
               }
             }
           }
