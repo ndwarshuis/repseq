@@ -37,7 +37,8 @@ int read_ring (struct ring* r, int i) {
 
 struct divisor {
   int d;
-  int n_blind;
+  int n_empty;
+  int n_required;
   struct ring* matches;
 };
 
@@ -52,37 +53,50 @@ struct seq_state {
 int compare (const void* a, const void* b) {
   const struct divisor* a0 = (const struct divisor*)a;
   const struct divisor* b0 = (const struct divisor*)b;
+
   return (a0->d - b0->d);
 }
 
 struct divisor init_divisor(int d, int r) {
   struct divisor div;
-  int n = d * ((r / d) - 1);
+
+  int n; 
+  int empty;
+
+  n = d * ((r / d) - 1);
+  empty = d % n;
 
   div.d = d;
-  div.n_blind = d % n;
-  div.matches = init_ring(n);
+  div.n_required = n;
+  div.n_empty = empty;
+  div.matches = init_ring(empty == 0 ? r / 2 : r);
 
   return div;
 }
 
 void find_divisors(struct seq_state* st, int r) {
-  double u = floor(sqrt(r));
+  struct divisor* divisors;
+
   int i = 2;
   int n = 1;
-  int one_div;
-  struct divisor* divisors = malloc(n * sizeof(*divisors));
+  int is_mid;
+
+  double u;
+
+  divisors = malloc(n * sizeof(*divisors));
 
   divisors[0] = init_divisor(1, r);
 
+  u = floor(sqrt(r));
+
   while (i <= u) {
     if (r % i == 0) {
-      one_div = r / i == i;
-      n = n + 1 + !one_div;
+      is_mid = r / i == i;
+      n = n + 1 + !is_mid;
       // lets just pretend realloc won't return NULL here
       divisors = realloc(divisors, n * sizeof(*divisors));
       divisors[n - 1] = init_divisor(i, r);
-      if (!one_div) {
+      if (!is_mid) {
         divisors[n - 2] = init_divisor(r / i, r);
       }
     }
@@ -91,9 +105,9 @@ void find_divisors(struct seq_state* st, int r) {
 
   qsort(divisors, n, sizeof(*divisors), compare);
 
-  /* for (i = 0; i < n; i++) { */
-  /*   fprintf( stderr, "%i\n", divisors[i].d); */
-  /* } */
+  for (int j = 0; j < n; j++) {
+    fprintf(stderr, "%i\n", divisors[j].n_required);
+  }
 
   st->divisors = divisors;
   st->n_divisors = n;
@@ -118,77 +132,61 @@ void print_entryN (struct seq_state* st, char* chr, int i, int n, int l) {
   }
 }
 
-int all_true (struct ring* ring) {
-  int i;
-
-  /* fprintf(stderr, "all-true: %i\n", ring->n); */
-  for (i = 0; i < ring->n; i++) {
-    /* fprintf(stderr, "%i", ring->elements[i]); */
-    if (ring->elements[i] == 0) {
-      return 0;
-    }
-  }
-
-  return 1;
-}
-
-int valid_repeat (struct seq_state* st) {
-  int i;
-
-  for (i = 0; i < st->n_divisors; i++) {
-    if (all_true(st->divisors[i].matches) == 1) {
-      /* fprintf(stderr, "false\n"); */
-      return 0;
-    }
-  }
-  /* fprintf(stderr, "true\n"); */
-
-  return 1;
-}
-
-void update_match (struct ring* last_bases, struct divisor* div, int i, int offset) {
-  int c0 = read_ring(last_bases, i + offset);
-  int c1 = read_ring(last_bases, (i - div->d + offset));
-  /* fprintf(stderr, "%i %c %c %i %i\n", i % div->matches->n, c0, c1, div->d, c0 == c1); */
-
-  write_ring(div->matches, i + offset, c0 == c1);
-}
-
-void update_matches (struct seq_state* st, int i) {
+int all_true (struct divisor* div, int i) {
   int j;
 
-  // if n % r = 0 then no blind cells need to be filled (same starting position)
-  // if n % r = r - 1 then no blind cells (we are filling it now)
-  // if n % r = r - 2
-  // TTATAA
-  // __0110
-  //  TATAAX n = 7, 7 % 6 = 1, do nothing special
-  //  _0110_ -> 1100 -> 110X
-  //   ATAATX n = 8, 8 % 6 = 2, fill in first and second
-  //   0110__ -> 1001 -> 101X
-  //    TAATTX n = 9, 9 % 6 = 3, fill in 1-4
-  //    110__0 -> 0011 -> 000X
-  //     AATTAX n = 10, 9 % 6 = 3, fill in 1-4
-  //     10__0X -> 0110 -> 001X (wrong!!!, should be 000X)
-  for (j = 0; j < st->div_index; j++) {
-    update_match(st->last_bases, &st->divisors[j], i, 0);
+  for (j = 0; j < div->n_required; j++) {
+    if (!read_ring(div->matches, i - j)) {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+int valid_repeat (struct seq_state* st, int i) {
+  int j;
+
+  for (j = 0; j < st->n_divisors; j++) {
+    if (all_true(&st->divisors[j], i)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+/* void update_match (struct ring* last_bases, struct divisor* div, int i, int offset) { */
+/*   int c0 = read_ring(last_bases, i + offset); */
+/*   int c1 = read_ring(last_bases, (i - div->d + offset)); */
+
+/*   write_ring(div->matches, i + offset, c0 == c1); */
+/* } */
+
+void update_matches (struct seq_state* st, int i) {
+  int c0;
+  int c1;
+
+  for (int j = 0; j < st->div_index; j++) {
+    c0 = read_ring(st->last_bases, i);
+    c1 = read_ring(st->last_bases, (i - st->divisors[j].d));
+    write_ring(st->divisors[j].matches, i, c0 == c1);
+    /* update_match(st->last_bases, &st->divisors[j], i, 0); */
   }
 }
 
-int find_next_n (struct seq_state* st, int i, int r, char c) {
-  write_ring(st->last_bases, i, c);
-  update_matches(st, i);
-  return r - !valid_repeat(st);
-}
+/* int find_next_n (struct seq_state* st, int i, int r, char c) { */
+/*   write_ring(st->last_bases, i, c); */
+/*   update_matches(st, i); */
+/*   return r - !valid_repeat(st, i); */
+/* } */
 
 void scan_seqN(FILE* fp, char* chr, int r, int l) {
   struct seq_state* st = malloc(sizeof(*st));
+
   int c;
   int c0;
   int i = 0;
   int n = 0;
-  int j;
-  int k;
 
   st->last_bases = init_ring(r);
   st->div_index = 0;
@@ -196,6 +194,24 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
 
   while (1) {
     c = fgetc(fp);
+
+    /* fprintf(stderr, "---\n"); */
+    /* fprintf(stderr, "i = %i\n", i); */
+    /* fprintf(stderr, "n = %i\n", n); */
+    /* fprintf(stderr, "c = %c\n", c); */
+    /* fprintf(stderr, "valid = %i\n", valid_repeat(st, i)); */
+    /* for (int j = 0; j < r; j++) { */
+    /*   fprintf(stderr, "%c", read_ring(st->last_bases, i - j)); */
+    /* } */
+    /* fprintf(stderr, "\n"); */
+    /* for (int j = 0; j < st->n_divisors; j++) { */
+    /*   fprintf(stderr, "d = %i\n", st->divisors[j].d); */
+    /*   /\* for (int k = 0; k < st->divisors[j].n_required; k++) { *\/ */
+    /*   for (int k = 0; k < st->divisors[j].matches->n; k++) { */
+    /*     fprintf(stderr, "%i", read_ring(st->divisors[j].matches, i - k)); */
+    /*   } */
+    /*   fprintf(stderr, "\n"); */
+    /* } */
 
     // ignore newlines
     if (c != '\n') {
@@ -220,32 +236,33 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
       } else if (n == r - 1) {
         write_ring(st->last_bases, i, c);
         update_matches(st, i);
-        n =  r - !valid_repeat(st);
+        n =  r - !valid_repeat(st, i);
         /* n = find_next_n(st, i, r, c); */
 
       } else {
         c0 = read_ring(st->last_bases, i);
         if (c0 == c) {
           // TODO this shouldn't be necessary to do every time
-          /* update_matches(st, i); */
+          update_matches(st, i);
           n++;
         } else {
           print_entryN(st, chr, i, n, l);
           write_ring(st->last_bases, i, c);
           update_matches(st, i);
+
           // update all divisors with blind arrays
           // TODO there are probably shortcuts here to take depending on the
           // number of blind spots to find, the offset of the divisor array,
           // etc
-          for (j = 0; j < st->div_index; j++) {
-            if (&st->divisors[j].n_blind > 0) {
-              for (k = 1; k < min(n - r + 1, st->divisors[j].matches->n); k++) {
-                update_match(st->last_bases, &st->divisors[j], i, (-k));
-              }
-            }
-          }
+          /* for (j = 0; j < st->div_index; j++) { */
+          /*   if (&st->divisors[j].n_required > 0) { */
+          /*     for (k = 1; k < min(n - r + 1, st->divisors[j].matches->n); k++) { */
+          /*       update_match(st->last_bases, &st->divisors[j], i, (-k)); */
+          /*     } */
+          /*   } */
+          /* } */
 
-          n =  r - !valid_repeat(st);
+          n =  r - !valid_repeat(st, i);
           /* n = find_next_n(st, i, r, c); */
         }
       }
