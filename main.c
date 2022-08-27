@@ -57,6 +57,7 @@ struct seq_state {
   int n_divisors;
   int length;
   char* chr;
+  char* unit_buffer;
 };
 
 int compare (const void* a, const void* b) {
@@ -123,21 +124,20 @@ void find_divisors(struct seq_state* st, int r) {
 }
 
 void print_entryN (struct seq_state* st, int i, int n) {
+  int r;
+  int o;
+  int j;
+
   if (n >= st->length) {
-    int r = st->last_bases->n;
-    int o = (i - n) % r;
-    char* s = malloc((r + 1) * sizeof(char));
-    int j;
+    r = st->last_bases->n;
+    o = (i - n) % r;
 
     for (j = 0; j < r; j++) {
-      s[j] = read_ring(st->last_bases, (j + o));
+      st->unit_buffer[j] = read_ring(st->last_bases, (j + o));
     }
 
-    s[r] = '\0';
+    print_entry(st->chr, i - n, i, st->unit_buffer);
 
-    print_entry(st->chr, i - n, i, s);
-
-    free(s);
   }
 }
 
@@ -154,10 +154,10 @@ int all_true (struct divisor* div, int i) {
 }
 
 int valid_repeat (struct seq_state* st, int i) {
-  int j;
+  struct divisor* d;
 
-  for (j = 0; j < st->n_divisors; j++) {
-    if (all_true(&st->divisors[j], i)) {
+  for (d = st->divisors; d < st->divisors + st->n_divisors; d++) {
+    if (all_true(d, i)) {
       return 0;
     }
   }
@@ -175,11 +175,6 @@ void update_match (struct ring* last_bases, struct divisor* div, const int i) {
 }
 
 void update_matches (struct seq_state* st, const int i) {
-  /* struct divisor* d; */
-
-  /* for (d = st->divisors; d < st->divisors + st->div_index; d++) { */
-  /*   update_match(st->last_bases, d, i); */
-  /* } */
   for (int j = 0; j < st->div_index; j++) {
     update_match(st->last_bases, &st->divisors[j], i);
   }
@@ -207,6 +202,8 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
   st->length = l;
   st->chr = chr;
   find_divisors(st, r);
+  st->unit_buffer = malloc((r + 1) * sizeof(char));
+  st->unit_buffer[r] = '\0';
 
   while (1) {
     c = fgetc(fp);
@@ -285,6 +282,7 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
   }
 
   /* TODO also free divisors? */
+  free(st->unit_buffer);
   free(st);
 }
 
