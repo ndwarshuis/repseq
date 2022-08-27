@@ -162,25 +162,19 @@ int valid_repeat (struct seq_state* st, int i) {
   return 1;
 }
 
-void update_match (struct ring* last_bases, struct divisor* div, int i, int offset) {
+void update_match (struct ring* last_bases, struct divisor* div, const int i) {
   int c0;
   int c1;
 
-  c0 = read_ring(last_bases, i + offset);
-  c1 = read_ring(last_bases, (i - div->d + offset));
+  c0 = read_ring(last_bases, i);
+  c1 = read_ring(last_bases, (i - div->d));
 
-  write_ring(div->matches, i + offset, c0 == c1);
+  write_ring(div->matches, i, c0 == c1);
 }
 
-void update_matches (struct seq_state* st, int i) {
-  /* int c0; */
-  /* int c1; */
-
+void update_matches (struct seq_state* st, const int i) {
   for (int j = 0; j < st->div_index; j++) {
-    /* c0 = read_ring(st->last_bases, i); */
-    /* c1 = read_ring(st->last_bases, (i - st->divisors[j].d)); */
-    /* write_ring(st->divisors[j].matches, i, c0 == c1); */
-    update_match(st->last_bases, &st->divisors[j], i, 0);
+    update_match(st->last_bases, &st->divisors[j], i);
   }
 }
 
@@ -250,7 +244,6 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
         write_ring(st->last_bases, i, c);
         update_matches(st, i);
         n =  r - !valid_repeat(st, i);
-        /* n = find_next_n(st, i, r, c); */
 
       } else {
         c0 = read_ring(st->last_bases, i);
@@ -269,14 +262,13 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
             for (j = 0; j < st->n_divisors; j++) {
               if (st->divisors[j].n_empty > 0) {
                 for (k = max(1, shift - st->divisors[j].n_empty); k < shift; k++) {
-                  update_match(st->last_bases, &st->divisors[j], i, (-k));
+                  update_match(st->last_bases, &st->divisors[j], i - k);
                 }
               }
             }
           }
 
           n =  r - !valid_repeat(st, i);
-          /* n = find_next_n(st, i, r, c); */
         }
       }
       i++;
