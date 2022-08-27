@@ -27,18 +27,21 @@ struct ring {
   int* elements;
 };
 
-struct ring* init_ring (int n) {
-  struct ring* r = malloc(sizeof(*r));
+struct ring* init_ring (const int n) {
+  struct ring* r;
+
+  r = malloc(sizeof(*r));
   r->n = n;
   r->elements = malloc(n * sizeof(int));
+
   return r;
 }
 
-void write_ring (struct ring* r, int i, int c) {
+void write_ring (const struct ring* r, const int i, const int c) {
   r->elements[i % r->n] = c;
 }
 
-int read_ring (struct ring* r, int i) {
+int read_ring (const struct ring* const r, const int i) {
   return r->elements[i % r->n];
 }
 
@@ -141,7 +144,7 @@ void print_entryN (struct seq_state* st, int i, int n) {
   }
 }
 
-int all_true (struct divisor* div, int i) {
+int all_true (struct divisor* div, const int i) {
   int j;
 
   for (j = 0; j < div->n_required; j++) {
@@ -153,7 +156,7 @@ int all_true (struct divisor* div, int i) {
   return 1;
 }
 
-int valid_repeat (struct seq_state* st, int i) {
+int valid_repeat (struct seq_state* st, const int i) {
   struct divisor* d;
 
   for (d = st->divisors; d < st->divisors + st->n_divisors; d++) {
@@ -186,8 +189,8 @@ void update_matches (struct seq_state* st, const int i) {
 /*   return r - !valid_repeat(st, i); */
 /* } */
 
-void scan_seqN(FILE* fp, char* chr, int r, int l) {
-  struct seq_state* st = malloc(sizeof(*st));
+void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
+  struct seq_state* st;
 
   int c;
   int c0;
@@ -197,13 +200,16 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
   int k;
   int shift;
 
+  st = malloc(sizeof(*st));
+
   st->last_bases = init_ring(r);
   st->div_index = 0;
   st->length = l;
   st->chr = chr;
-  find_divisors(st, r);
   st->unit_buffer = malloc((r + 1) * sizeof(char));
   st->unit_buffer[r] = '\0';
+
+  find_divisors(st, r);
 
   while (1) {
     c = fgetc(fp);
@@ -249,13 +255,11 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
       } else if (n == r - 1) {
         write_ring(st->last_bases, i, c);
         update_matches(st, i);
-        n =  r - !valid_repeat(st, i);
+        n = r - !valid_repeat(st, i);
 
       } else {
         c0 = read_ring(st->last_bases, i);
         if (c0 == c) {
-          // TODO this shouldn't be necessary to do every time
-          /* update_matches(st, i); */
           n++;
         } else {
           print_entryN(st, i, n);
