@@ -55,6 +55,8 @@ struct seq_state {
   struct divisor* divisors;
   int div_index;
   int n_divisors;
+  int length;
+  char* chr;
 };
 
 int compare (const void* a, const void* b) {
@@ -112,16 +114,16 @@ void find_divisors(struct seq_state* st, int r) {
 
   qsort(divisors, n, sizeof(*divisors), compare);
 
-  for (int j = 0; j < n; j++) {
-    fprintf(stderr, "%i\n", divisors[j].n_required);
-  }
+  /* for (int j = 0; j < n; j++) { */
+  /*   fprintf(stderr, "%i\n", divisors[j].n_required); */
+  /* } */
 
   st->divisors = divisors;
   st->n_divisors = n;
 }
 
-void print_entryN (struct seq_state* st, char* chr, int i, int n, int l) {
-  if (n >= l) {
+void print_entryN (struct seq_state* st, int i, int n) {
+  if (n >= st->length) {
     int r = st->last_bases->n;
     int o = (i - n) % r;
     char* s = malloc((r + 1) * sizeof(char));
@@ -133,7 +135,7 @@ void print_entryN (struct seq_state* st, char* chr, int i, int n, int l) {
 
     s[r] = '\0';
 
-    print_entry(chr, i - n, i, s);
+    print_entry(st->chr, i - n, i, s);
 
     free(s);
   }
@@ -173,6 +175,11 @@ void update_match (struct ring* last_bases, struct divisor* div, const int i) {
 }
 
 void update_matches (struct seq_state* st, const int i) {
+  /* struct divisor* d; */
+
+  /* for (d = st->divisors; d < st->divisors + st->div_index; d++) { */
+  /*   update_match(st->last_bases, d, i); */
+  /* } */
   for (int j = 0; j < st->div_index; j++) {
     update_match(st->last_bases, &st->divisors[j], i);
   }
@@ -197,6 +204,8 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
 
   st->last_bases = init_ring(r);
   st->div_index = 0;
+  st->length = l;
+  st->chr = chr;
   find_divisors(st, r);
 
   while (1) {
@@ -224,11 +233,11 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
     if (c != '\n') {
 
       if (c == EOF || c == HEADER_PREFIX) {
-        print_entryN(st, chr, i, n, l);
+        print_entryN(st, i, n);
         break;
 
       } else if (c == 'N') {
-        print_entryN(st, chr, i, n, l);
+        print_entryN(st, i, n);
         n = 0;
         st->div_index = 0;
 
@@ -252,7 +261,7 @@ void scan_seqN(FILE* fp, char* chr, int r, int l) {
           /* update_matches(st, i); */
           n++;
         } else {
-          print_entryN(st, chr, i, n, l);
+          print_entryN(st, i, n);
           write_ring(st->last_bases, i, c);
           update_matches(st, i);
 
