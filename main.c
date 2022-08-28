@@ -161,15 +161,15 @@ int all_true (Divisor* div, const int i) {
   return 1;
 }
 
-int valid_repeat (SeqState* st, const int i) {
+int invalid_repeat (SeqState* st, const int i) {
   Divisor** d;
 
   for (d = st->divisors; d < st->divisors + st->n_divisors; d++) {
     if (all_true(*d, i)) {
-      return 0;
+      return 1;
     }
   }
-  return 1;
+  return 0;
 }
 
 void update_match (Ring* last_bases, Divisor* div, const int i) {
@@ -258,7 +258,7 @@ void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
       } else if (n == r - 1) {
         write_ring(st->last_bases, i, c);
         update_matches(st, i);
-        n = r - !valid_repeat(st, i);
+        n = r - invalid_repeat(st, i);
 
       } else {
         c0 = read_ring(st->last_bases, i);
@@ -279,7 +279,7 @@ void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
             }
           }
 
-          n =  r - !valid_repeat(st, i);
+          n =  r - invalid_repeat(st, i);
         }
       }
       i++;
