@@ -99,6 +99,7 @@ void free_divisor (Divisor* div) {
 
 void find_divisors(SeqState* st, int r) {
   Divisor** divisors;
+  Divisor** tmp;
 
   int i = 2;
   int n = 1;
@@ -116,8 +117,13 @@ void find_divisors(SeqState* st, int r) {
     if (r % i == 0) {
       is_mid = r / i == i;
       n = n + 1 + !is_mid;
-      // lets just pretend realloc won't return NULL here
-      divisors = realloc(divisors, n * sizeof(*divisors));
+      tmp = realloc(divisors, n * sizeof(*divisors));
+      if (tmp == NULL) {
+        printf("Error allocating divisor");
+        exit(-1);
+      } else {
+        divisors = tmp;
+      }
       divisors[n - 1] = init_divisor(i, r);
       if (!is_mid) {
         divisors[n - 2] = init_divisor(r / i, r);
