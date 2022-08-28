@@ -342,11 +342,15 @@ int seek_char(FILE* fp, char t) {
 }
 
 int parse_header(FILE* fp, char* chr) {
-  int c = fscanf(fp, "%31s", chr);
+  int c;
+
+  c = fscanf(fp, "%31s", chr);
+
   if (1 != c && EOF != c) {
     printf("Error when parsing chromosome header");
     exit(-1);
   }
+
   return seek_char(fp, '\n');
 }
 
@@ -362,7 +366,10 @@ int read_fasta(FILE* fp, int r, int l) {
   // is weird...
   seek_char(fp, HEADER_PREFIX);
 
+
   while (EOF != parse_header(fp, chr)) {
+    fprintf(stderr, "Parsing chromosome %s\n", chr);
+
     if (r == 1) {
       scan_seq1(fp, chr, l);
     } else {
@@ -375,8 +382,12 @@ int read_fasta(FILE* fp, int r, int l) {
 
 int main(int argc, char *argv[]) {
   if ( argc == 4 ) {
-    int r = atoi(argv[1]);
-    int l = atoi(argv[2]);
+    int r;
+    int l;
+
+    r = atoi(argv[1]);
+    l = atoi(argv[2]);
+
     read_fasta(fopen(argv[3], "r"), r, l);
   } else {
     printf("Usage: REPS LENGTH INFILE\n");
