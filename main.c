@@ -4,54 +4,52 @@
 
 #define HEADER_PREFIX '>'
 
-void print_entry(char* chr, int start, int end, char* unit) {
-  printf("%s\t%i\t%i\tunit=%s\n", chr, start, end, unit);
+void print_entry(char* chr, int p, int n, char* unit) {
+  printf("%s\t%i\t%i\tunit=%s\n", chr, p - n, p, unit);
 }
 
 typedef struct {
-  int n;
+  int size;
   int* elements;
 } Ring;
 
 typedef struct {
   int d;
   Ring* matches;
-} Divisor;
+} SubMatch;
 
 typedef struct {
   Ring* last_bases;
-  Divisor** divisors;
-  int div_index;
-  int n_divisors;
+  SubMatch** submatches;
+  int submatch_index;
+  int n_submatches;
   int length;
   char* chr;
   char* unit_buffer;
 } SeqState;
 
-Ring* init_ring (const int n) {
-  Ring* r;
+Ring* init_ring (const int size) {
+  Ring* ring;
 
-  r = malloc(sizeof(*r));
-  r->n = n;
-  r->elements = malloc(n * sizeof(int));
+  ring = malloc(sizeof(*ring));
+  ring->size = size;
+  ring->elements = malloc(size * sizeof(int));
 
-  return r;
+  return ring;
 }
 
-void free_ring (Ring* rng) {
-  free(rng->elements);
-  free(rng);
+void free_ring (Ring* ring) {
+  free(ring->elements);
+  free(ring);
 }
 
-void write_ring (const Ring* r, const int i, const int c) {
-  r->elements[i % r->n] = c;
+void write_ring (const Ring* ring, const int i, const int c) {
+  ring->elements[i % ring->size] = c;
 }
 
-int read_ring (const Ring* const r, const int i) {
-  return r->elements[i % r->n];
+int read_ring (const Ring* const ring, const int i) {
+  return ring->elements[i % ring->size];
 }
-
-/* divisors */
 
 int int_compare (const void* a, const void* b) {
   const int* a0 = (const int*)a;
@@ -60,26 +58,26 @@ int int_compare (const void* a, const void* b) {
   return (a0 - b0);
 }
 
-Divisor* init_divisor (int d, int r) {
-  Divisor* div;
+SubMatch* init_submatch (int d, int rep) {
+  SubMatch* sm;
 
-  div = malloc(sizeof(*div));
+  sm = malloc(sizeof(*sm));
 
-  div->d = d;
-  div->matches = init_ring(d * ((r / d) - 1));
+  sm->d = d;
+  sm->matches = init_ring(d * ((rep / d) - 1));
 
-  return div;
+  return sm;
 }
 
-void free_divisor (Divisor* div) {
-  free_ring(div->matches);
-  free(div);
+void free_submatch (SubMatch* sm) {
+  free_ring(sm->matches);
+  free(sm);
 }
 
-int* expand_array (int n, int* result) {
+int* expand_array (int size, int* result) {
   int* tmp;
 
-  tmp = realloc(result, n * sizeof(*result));
+  tmp = realloc(result, size * sizeof(*result));
 
   if (tmp == NULL) {
     printf("Error expanding array");
@@ -152,46 +150,42 @@ int* find_exclusive_divisors (int x, int* k) {
   return result;
 }
 
-void init_subpatterns (SeqState* st, int r) {
-  Divisor** subpatterns;
+void init_submatches (SeqState* st, int rep) {
+  SubMatch** sms;
 
   int* xdivisors = NULL;
   int i, k;
 
-  xdivisors = find_exclusive_divisors(r, &k);
+  xdivisors = find_exclusive_divisors(rep, &k);
 
-  subpatterns = malloc(k * sizeof(*subpatterns));
-
-  fprintf(stderr, "%i\n", k);
+  sms = malloc(k * sizeof(*sms));
 
   for (i = 0; i < k; i++) {
-    subpatterns[i] = init_divisor(xdivisors[i], r);
+    sms[i] = init_submatch(xdivisors[i], rep);
   }
 
-  st->divisors = subpatterns;
-  st->n_divisors = k;
+  st->submatches = sms;
+  st->n_submatches = k;
 }
 
-void print_entryN (SeqState* st, int i, int n) {
-  int r;
-  int o;
-  int j;
+void print_entryN (SeqState* st, int p, int n) {
+  int r, o, j;
 
   if (n >= st->length) {
-    r = st->last_bases->n;
-    o = (i - n) % r;
+    r = st->last_bases->size;
+    o = (p - n) % r;
 
     for (j = 0; j < r; j++) {
       st->unit_buffer[j] = read_ring(st->last_bases, (j + o));
     }
 
-    print_entry(st->chr, i - n, i, st->unit_buffer);
+    print_entry(st->chr, p, n, st->unit_buffer);
   }
 }
 
-int all_true (Divisor* div) {
-  for (int j = 0; j < div->matches->n; j++) {
-    if (!div->matches->elements[j]) {
+int all_match (SubMatch* sm) {
+  for (int i = 0; i < sm->matches->size; i++) {
+    if (!sm->matches->elements[i]) {
       return 0;
     }
   }
@@ -200,83 +194,82 @@ int all_true (Divisor* div) {
 }
 
 int invalid_repeat (SeqState* st) {
-  Divisor** d;
+  SubMatch** d;
 
-  for (d = st->divisors; d < st->divisors + st->n_divisors; d++) {
-    if (all_true(*d)) {
+  for (d = st->submatches; d < st->submatches + st->n_submatches; d++) {
+    if (all_match(*d)) {
       return 1;
     }
   }
   return 0;
 }
 
-void update_match (Ring* last_bases, Divisor* div, const int i) {
+void update_match (Ring* last_bases, SubMatch* sm, const int p) {
   int c0;
   int c1;
 
-  c0 = read_ring(last_bases, i);
-  c1 = read_ring(last_bases, (i - div->d));
+  c0 = read_ring(last_bases, p);
+  c1 = read_ring(last_bases, (p - sm->d));
 
-  write_ring(div->matches, i, c0 == c1);
+  write_ring(sm->matches, p, c0 == c1);
 }
 
-void update_matches (SeqState* st, const int i) {
-  for (int j = 0; j < st->div_index; j++) {
-    update_match(st->last_bases, st->divisors[j], i);
+void update_matches (SeqState* st, const int p) {
+  for (int j = 0; j < st->submatch_index; j++) {
+    update_match(st->last_bases, st->submatches[j], p);
   }
 }
 
-SeqState* init_seq_state (char* chr, int r, int l) {
+SeqState* init_seq_state (char* chr, int rep, int len) {
   SeqState* st;
 
   st = malloc(sizeof(*st));
 
-  st->last_bases = init_ring(r);
-  st->div_index = 0;
-  st->length = l;
+  st->last_bases = init_ring(rep);
+  st->submatch_index = 0;
+  st->length = len;
   st->chr = chr;
-  st->unit_buffer = malloc((r + 1) * sizeof(char));
-  st->unit_buffer[r] = '\0';
+  st->unit_buffer = malloc((rep + 1) * sizeof(char));
+  st->unit_buffer[rep] = '\0';
 
-  init_subpatterns(st, r);
+  init_submatches(st, rep);
 
   return st;
 }
 
 void free_seq_state (SeqState* st) {
-  for (int j = 0; j < st->n_divisors; j++) {
-    free_divisor(st->divisors[j]);
+  for (int j = 0; j < st->n_submatches; j++) {
+    free_submatch(st->submatches[j]);
   }
 
   free_ring(st->last_bases);
 
-  free(st->divisors);
+  free(st->submatches);
   free(st->unit_buffer);
 
   free(st);
 }
 
-void update_divisor_index (SeqState* st, int n) {
-  if (st->div_index < st->n_divisors && st->divisors[st->div_index]->d == n + 1) {
-    st->div_index++;
+void update_submatch_index (SeqState* st, int n) {
+  if (st->submatch_index < st->n_submatches && st->submatches[st->submatch_index]->d == n + 1) {
+    st->submatch_index++;
   }
 }
 
-int next_n (SeqState* st, int i, int r, int c) {
-  write_ring(st->last_bases, i, c);
-  update_matches(st, i);
-  return r - invalid_repeat(st);
+int next_n (SeqState* st, int p, int c) {
+  write_ring(st->last_bases, p, c);
+  update_matches(st, p);
+  return st->last_bases->size - invalid_repeat(st);
 }
 
-void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
+void scan_seqN(FILE* fp, char* chr, const int rep, const int len) {
   SeqState* st;
 
-  int c;
-  int c0;
-  int i = 0;
+  int c, c0;
+  int p = 0;
   int n = 0;
 
-  st = init_seq_state(chr, r, l);
+  st = init_seq_state(chr, rep, len);
 
   while (1) {
     c = fgetc(fp);
@@ -285,43 +278,43 @@ void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
     if (c != '\n') {
 
       if (c == EOF || c == HEADER_PREFIX) {
-        print_entryN(st, i, n);
+        print_entryN(st, p, n);
         break;
 
       } else if (c == 'N') {
-        print_entryN(st, i, n);
+        print_entryN(st, p, n);
         n = 0;
-        st->div_index = 0;
+        st->submatch_index = 0;
 
-      } else if (n < r - 1) {
-        write_ring(st->last_bases, i, c);
-        update_matches(st, i);
-        update_divisor_index(st, n);
+      } else if (n < rep - 1) {
+        write_ring(st->last_bases, p, c);
+        update_matches(st, p);
+        update_submatch_index(st, n);
         n++;
 
-      } else if (n == r - 1) {
-        n = next_n(st, i,r, c);
+      } else if (n == rep - 1) {
+        n = next_n(st, p, c);
 
       } else {
-        c0 = read_ring(st->last_bases, i);
+        c0 = read_ring(st->last_bases, p);
         if (c0 == c) {
           n++;
-          update_matches(st, i);
+          update_matches(st, p);
         } else {
-          print_entryN(st, i, n);
-          n = next_n(st, i,r, c);
+          print_entryN(st, p, n);
+          n = next_n(st, p, c);
         }
       }
-      i++;
+      p++;
     }
   }
 
   free_seq_state(st);
 }
 
-void scan_seq1(FILE* fp, char* chr, int l) {
+void scan_seq1(FILE* fp, char* chr, int len) {
   char lastBase[2] = {'N', '\0'};
-  int i = 0;
+  int p = 0;
   int n = 1;
   int c;
 
@@ -332,8 +325,8 @@ void scan_seq1(FILE* fp, char* chr, int l) {
     if (c != '\n') {
 
       if (c == EOF || c == HEADER_PREFIX) {
-        if (n >= l) {
-          print_entry(chr, i - n, i, lastBase);
+        if (n >= len) {
+          print_entry(chr, p, n, lastBase);
         }
         break;
 
@@ -345,13 +338,13 @@ void scan_seq1(FILE* fp, char* chr, int l) {
         n++;
 
       } else {
-        if (n >= l) {
-          print_entry(chr, i - n, i, lastBase);
+        if (n >= len) {
+          print_entry(chr, p, n, lastBase);
         }
         n = 1;
         lastBase[0] = c;
       }
-      i++;
+      p++;
     }
   }
 }
@@ -379,7 +372,7 @@ int parse_header(FILE* fp, char* chr) {
   return seek_char(fp, '\n');
 }
 
-int read_fasta(FILE* fp, int r, int l) {
+int read_fasta(FILE* fp, int rep, int len) {
   char chr[32];
   
   if (fp == NULL) {
@@ -395,10 +388,10 @@ int read_fasta(FILE* fp, int r, int l) {
   while (parse_header(fp, chr) != EOF) {
     fprintf(stderr, "Parsing chromosome %s\n", chr);
 
-    if (r == 1) {
-      scan_seq1(fp, chr, l);
+    if (rep == 1) {
+      scan_seq1(fp, chr, len);
     } else {
-      scan_seqN(fp, chr, r, l);
+      scan_seqN(fp, chr, rep, len);
     }
   }
 
@@ -406,14 +399,14 @@ int read_fasta(FILE* fp, int r, int l) {
 }
 
 int main(int argc, char *argv[]) {
-  if ( argc == 4 ) {
-    int r;
-    int l;
+  if (argc == 4) {
+    int rep;
+    int len;
 
-    r = atoi(argv[1]);
-    l = atoi(argv[2]);
+    rep = atoi(argv[1]);
+    len = atoi(argv[2]);
 
-    read_fasta(fopen(argv[3], "r"), r, l);
+    read_fasta(fopen(argv[3], "r"), rep, len);
   } else {
     printf("Usage: REPS LENGTH INFILE\n");
   }
