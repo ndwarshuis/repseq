@@ -63,12 +63,11 @@ int read_ring (const Ring* const r, const int i) {
 
 /* divisors */
 
+int int_compare (const void* a, const void* b) {
+  const int* a0 = (const int*)a;
+  const int* b0 = (const int*)b;
 
-int compare (const void* a, const void* b) {
-  const Divisor* a0 = (const Divisor*)a;
-  const Divisor* b0 = (const Divisor*)b;
-
-  return (a0->d - b0->d);
+  return (a0 - b0);
 }
 
 Divisor* init_divisor (int d, int r) {
@@ -95,45 +94,124 @@ void free_divisor (Divisor* div) {
   free(div);
 }
 
-void find_divisors(SeqState* st, int r) {
-  Divisor** divisors;
-  Divisor** tmp;
+/* int* sieve_of_eratosthenes (const int n) { */
+/*   /\* ASSUME n > 1 *\/ */
+/*   int i, j, r; */
+/*   int* candidates; */
+
+/*   candidates = malloc(n * sizeof(*candidates)); */
+
+/*   for (i = 0; i < n; i++) { */
+/*     candidates[i] = 1; */
+/*   } */
+
+/*   r = sqrt(n); */
+
+/*   for (i = 2; i <= r; i++) { */
+/*     if (candidates[i]) { */
+/*       for(j = i * i; j <= n; j += i) { */
+/*         candidates[j] = 0; */
+/*       } */
+/*     } */
+/*   } */
+
+/*   return candidates; */
+/* } */
+
+int* expand_array (int n, int* result) {
+  int* tmp;
+
+  tmp = realloc(result, n * sizeof(*result));
+
+  if (tmp == NULL) {
+    printf("Error expanding array");
+    exit(-1);
+  } else {
+    return tmp;
+  }
+}
+
+int* find_divisors (int x, int* k) {
+  int* candidates;
 
   int i = 2;
-  int n = 1;
   int is_mid;
+  int u;
 
-  double u;
+  *k = 1;
 
-  divisors = malloc(n * sizeof(*divisors));
+  candidates = malloc(*k * sizeof(int));
 
-  divisors[0] = init_divisor(1, r);
+  candidates[0] = 1;
 
-  u = floor(sqrt(r));
+  u = floor(sqrt(x));
 
   while (i <= u) {
-    if (r % i == 0) {
-      is_mid = r / i == i;
-      n = n + 1 + !is_mid;
-      tmp = realloc(divisors, n * sizeof(*divisors));
-      if (tmp == NULL) {
-        printf("Error allocating divisor");
-        exit(-1);
-      } else {
-        divisors = tmp;
-      }
-      divisors[n - 1] = init_divisor(i, r);
+    if (x % i == 0) {
+      is_mid = x / i == i;
+      *k = *k + 1 + !is_mid;
+      candidates = expand_array(*k, candidates);
+      candidates[*k - 1] = i;
       if (!is_mid) {
-        divisors[n - 2] = init_divisor(r / i, r);
+        candidates[*k - 2] = x / i;
       }
     }
     i++;
   }
 
-  qsort(divisors, n, sizeof(*divisors), compare);
+  qsort(candidates, *k, sizeof(int), int_compare);
 
-  st->divisors = divisors;
-  st->n_divisors = n;
+  return candidates;
+}
+
+int* find_exclusive_divisors (int x, int* k) {
+  int i, j, d;
+  int* candidates;
+  int* result;
+
+  *k = 1;
+
+  result = malloc(*k * sizeof(int));
+
+  candidates = find_divisors(x, &d);
+
+  for (i = 0; i < d - 1; i++) {
+    j = i + 1;
+    while (candidates[j] % candidates[i] > 0 && j < d) {
+      j++;
+    }
+    if (j == d) {
+      (*k)++;
+      result = expand_array(*k, result);
+      result[*k - 2] = candidates[j];
+    }
+  }
+
+  result[*k - 1] = candidates[d - 1];
+
+  free(candidates);
+
+  return result;
+}
+
+void init_subpatterns (SeqState* st, int r) {
+  Divisor** subpatterns;
+
+  int* xdivisors = NULL;
+  int i, k;
+
+  xdivisors = find_exclusive_divisors(r, &k);
+
+  subpatterns = malloc(k * sizeof(*subpatterns));
+
+  fprintf(stderr, "%i\n", k);
+
+  for (i = 0; i < k; i++) {
+    subpatterns[i] = init_divisor(xdivisors[i], r);
+  }
+
+  st->divisors = subpatterns;
+  st->n_divisors = k;
 }
 
 void print_entryN (SeqState* st, int i, int n) {
@@ -174,6 +252,14 @@ int invalid_repeat (SeqState* st, const int i) {
     }
   }
   return 0;
+
+  /* int j; */
+  /* for (j = st->n_divisors - 1; j >= 0; j--) { */
+  /*   if (!all_true(st->divisors[j], i)) { */
+  /*     return 0; */
+  /*   } */
+  /* } */
+  /* return 1; */
 }
 
 void update_match (Ring* last_bases, Divisor* div, const int i) {
@@ -205,7 +291,7 @@ SeqState* init_seq_state (char* chr, int r, int l) {
   st->unit_buffer[r] = '\0';
   st->is_even = !(r % 2);
 
-  find_divisors(st, r);
+  init_subpatterns(st, r);
 
   return st;
 }
