@@ -219,6 +219,28 @@ void free_seq_state (SeqState* st) {
   free(st);
 }
 
+void update_blind (SeqState* st, int i, int n, int r) {
+  int shift;
+  int j;
+  int k;
+
+  shift = (n + 1) % r;
+
+  if (shift > 1) {
+    for (j = 0; j < st->n_divisors - st->is_even; j++) {
+      for (k = max(1, shift - st->divisors[j]->n_empty); k < shift; k++) {
+        update_match(st->last_bases, st->divisors[j], i - k);
+      }
+    }
+  }
+}
+
+void update_divisor_index (SeqState* st, int n) {
+  if (st->div_index < st->n_divisors && st->divisors[st->div_index]->d == n + 1) {
+    st->div_index++;
+  }
+}
+
 void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
   SeqState* st;
 
@@ -226,9 +248,6 @@ void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
   int c0;
   int i = 0;
   int n = 0;
-  int j;
-  int k;
-  int shift;
 
   st = init_seq_state(chr, r, l);
 
@@ -250,9 +269,7 @@ void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
       } else if (n < r - 1) {
         write_ring(st->last_bases, i, c);
         update_matches(st, i);
-        if (st->div_index < st->n_divisors && st->divisors[st->div_index]->d == n + 1) {
-          st->div_index++;
-        }
+        update_divisor_index(st, n);
         n++;
 
       } else if (n == r - 1) {
@@ -268,18 +285,9 @@ void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
           print_entryN(st, i, n);
           write_ring(st->last_bases, i, c);
           update_matches(st, i);
-
           // update all divisors with blind arrays
-          shift = (n + 1) % r;
-          if (shift > 1) {
-            for (j = 0; j < st->n_divisors - st->is_even; j++) {
-              for (k = max(1, shift - st->divisors[j]->n_empty); k < shift; k++) {
-                update_match(st->last_bases, st->divisors[j], i - k);
-              }
-            }
-          }
-
-          n =  r - invalid_repeat(st, i);
+          update_blind(st, i, n, r);
+          n = r - invalid_repeat(st, i);
         }
       }
       i++;
