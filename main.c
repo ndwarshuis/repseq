@@ -4,13 +4,6 @@
 
 #define HEADER_PREFIX '>'
 
-#define max(a,b)             \
-({                           \
-    __typeof__ (a) _a = (a); \
-    __typeof__ (b) _b = (b); \
-    _a > _b ? _a : _b;       \
-})
-
 void print_entry(char* chr, int start, int end, char* unit) {
   printf("%s\t%i\t%i\tunit=%s\n", chr, start, end, unit);
 }
@@ -22,8 +15,6 @@ typedef struct {
 
 typedef struct {
   int d;
-  int n_empty;
-  int n_required;
   Ring* matches;
 } Divisor;
 
@@ -35,7 +26,6 @@ typedef struct {
   int length;
   char* chr;
   char* unit_buffer;
-  int is_even;
 } SeqState;
 
 Ring* init_ring (const int n) {
@@ -73,18 +63,10 @@ int int_compare (const void* a, const void* b) {
 Divisor* init_divisor (int d, int r) {
   Divisor* div;
 
-  int n; 
-  int empty;
-
-  n = d * ((r / d) - 1);
-  empty = d % n;
-
   div = malloc(sizeof(*div));
 
   div->d = d;
-  div->n_required = n;
-  div->n_empty = empty;
-  div->matches = init_ring(empty == 0 ? r / 2 : r);
+  div->matches = init_ring(d * ((r / d) - 1));
 
   return div;
 }
@@ -93,30 +75,6 @@ void free_divisor (Divisor* div) {
   free_ring(div->matches);
   free(div);
 }
-
-/* int* sieve_of_eratosthenes (const int n) { */
-/*   /\* ASSUME n > 1 *\/ */
-/*   int i, j, r; */
-/*   int* candidates; */
-
-/*   candidates = malloc(n * sizeof(*candidates)); */
-
-/*   for (i = 0; i < n; i++) { */
-/*     candidates[i] = 1; */
-/*   } */
-
-/*   r = sqrt(n); */
-
-/*   for (i = 2; i <= r; i++) { */
-/*     if (candidates[i]) { */
-/*       for(j = i * i; j <= n; j += i) { */
-/*         candidates[j] = 0; */
-/*       } */
-/*     } */
-/*   } */
-
-/*   return candidates; */
-/* } */
 
 int* expand_array (int n, int* result) {
   int* tmp;
@@ -231,11 +189,9 @@ void print_entryN (SeqState* st, int i, int n) {
   }
 }
 
-int all_true (Divisor* div, const int i) {
-  int j;
-
-  for (j = 0; j < div->n_required; j++) {
-    if (!read_ring(div->matches, i - j)) {
+int all_true (Divisor* div) {
+  for (int j = 0; j < div->matches->n; j++) {
+    if (!div->matches->elements[j]) {
       return 0;
     }
   }
@@ -243,23 +199,15 @@ int all_true (Divisor* div, const int i) {
   return 1;
 }
 
-int invalid_repeat (SeqState* st, const int i) {
+int invalid_repeat (SeqState* st) {
   Divisor** d;
 
   for (d = st->divisors; d < st->divisors + st->n_divisors; d++) {
-    if (all_true(*d, i)) {
+    if (all_true(*d)) {
       return 1;
     }
   }
   return 0;
-
-  /* int j; */
-  /* for (j = st->n_divisors - 1; j >= 0; j--) { */
-  /*   if (!all_true(st->divisors[j], i)) { */
-  /*     return 0; */
-  /*   } */
-  /* } */
-  /* return 1; */
 }
 
 void update_match (Ring* last_bases, Divisor* div, const int i) {
@@ -289,7 +237,6 @@ SeqState* init_seq_state (char* chr, int r, int l) {
   st->chr = chr;
   st->unit_buffer = malloc((r + 1) * sizeof(char));
   st->unit_buffer[r] = '\0';
-  st->is_even = !(r % 2);
 
   init_subpatterns(st, r);
 
@@ -309,26 +256,16 @@ void free_seq_state (SeqState* st) {
   free(st);
 }
 
-void update_blind (SeqState* st, int i, int n, int r) {
-  int shift;
-  int j;
-  int k;
-
-  shift = (n + 1) % r;
-
-  if (shift > 1) {
-    for (j = 0; j < st->n_divisors - st->is_even; j++) {
-      for (k = max(1, shift - st->divisors[j]->n_empty); k < shift; k++) {
-        update_match(st->last_bases, st->divisors[j], i - k);
-      }
-    }
-  }
-}
-
 void update_divisor_index (SeqState* st, int n) {
   if (st->div_index < st->n_divisors && st->divisors[st->div_index]->d == n + 1) {
     st->div_index++;
   }
+}
+
+int next_n (SeqState* st, int i, int r, int c) {
+  write_ring(st->last_bases, i, c);
+  update_matches(st, i);
+  return r - invalid_repeat(st);
 }
 
 void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
@@ -363,21 +300,16 @@ void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
         n++;
 
       } else if (n == r - 1) {
-        write_ring(st->last_bases, i, c);
-        update_matches(st, i);
-        n = r - invalid_repeat(st, i);
+        n = next_n(st, i,r, c);
 
       } else {
         c0 = read_ring(st->last_bases, i);
         if (c0 == c) {
           n++;
+          update_matches(st, i);
         } else {
           print_entryN(st, i, n);
-          write_ring(st->last_bases, i, c);
-          update_matches(st, i);
-          // update all divisors with blind arrays
-          update_blind(st, i, n, r);
-          n = r - invalid_repeat(st, i);
+          n = next_n(st, i,r, c);
         }
       }
       i++;
