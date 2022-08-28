@@ -245,7 +245,7 @@ void free_seq_state (SeqState* st) {
 
   Repeat tracking: Allocate an array of size 'r' to keep track of the last bases
   encountered. Also keep track of the length of a current repeat ('n'). If n <=
-  'rep', write the current base to the buffer. If 'n' > 'r' and the candidate
+  'r', write the current base to the buffer. If 'n' > 'r' and the candidate
   repeat sequence is valid (see below), compare the current base to its relative
   modular position in the buffer. Keep scanning and incrementing n until a
   non-match is encountered. If the non-match is an N, start over completely,
