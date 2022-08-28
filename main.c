@@ -305,30 +305,39 @@ void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
 
 void scan_seq1(FILE* fp, char* chr, int len) {
   char lastBase[2] = {'N', '\0'};
-  long i = 0;
-  long n = 1;
+  int i = 0;
+  int n = 1;
   int c;
 
-  do {
+  while (1) {
     c = fgetc(fp);
-    if (c == '\n') {
-      // ignore newlines
-    } else if (c == 'N') {
-      i++;
-      n = 1;
-      lastBase[0] = c;
-    } else if (c == lastBase[0]) {
-      i++;
-      n++;
-    } else {
-      if (n >= len) {
-        print_entry(chr, i - n, i, lastBase);
+
+    // ignore newlines
+    if (c != '\n') {
+
+      if (c == EOF || c == HEADER_PREFIX) {
+        if (n >= len) {
+          print_entry(chr, i - n, i, lastBase);
+        }
+        break;
+
+      } else if (c == 'N') {
+        n = 1;
+        lastBase[0] = c;
+
+      } else if (c == lastBase[0]) {
+        n++;
+
+      } else {
+        if (n >= len) {
+          print_entry(chr, i - n, i, lastBase);
+        }
+        n = 1;
+        lastBase[0] = c;
       }
       i++;
-      n = 1;
-      lastBase[0] = c;
     }
-  } while (c != EOF && c != HEADER_PREFIX);
+  }
 }
 
 int seek_char(FILE* fp, char t) {
