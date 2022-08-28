@@ -4,12 +4,7 @@
 
 #define HEADER_PREFIX '>'
 
-/* #define min(a,b)             \ */
-/* ({                           \ */
-/*     __typeof__ (a) _a = (a); \ */
-/*     __typeof__ (b) _b = (b); \ */
-/*     _a < _b ? _a : _b;       \ */
-/* }) */
+/* helper functions */
 
 #define max(a,b)             \
 ({                           \
@@ -27,6 +22,24 @@ typedef struct {
   int* elements;
 } Ring;
 
+typedef struct {
+  int d;
+  int n_empty;
+  int n_required;
+  Ring* matches;
+} Divisor;
+
+typedef struct {
+  Ring* last_bases;
+  Divisor** divisors;
+  int div_index;
+  int n_divisors;
+  int length;
+  char* chr;
+  char* unit_buffer;
+  int is_even;
+} SeqState;
+
 Ring* init_ring (const int n) {
   Ring* r;
 
@@ -37,6 +50,11 @@ Ring* init_ring (const int n) {
   return r;
 }
 
+void free_ring (Ring* rng) {
+  free(rng->elements);
+  free(rng);
+}
+
 void write_ring (const Ring* r, const int i, const int c) {
   r->elements[i % r->n] = c;
 }
@@ -45,23 +63,8 @@ int read_ring (const Ring* const r, const int i) {
   return r->elements[i % r->n];
 }
 
-typedef struct {
-  int d;
-  int n_empty;
-  int n_required;
-  Ring* matches;
-} Divisor;
+/* divisors */
 
-typedef struct {
-  Ring* last_bases;
-  // TODO make this an array of pointers and not literal divisors?
-  Divisor* divisors;
-  int div_index;
-  int n_divisors;
-  int length;
-  char* chr;
-  char* unit_buffer;
-} SeqState;
 
 int compare (const void* a, const void* b) {
   const Divisor* a0 = (const Divisor*)a;
@@ -70,8 +73,8 @@ int compare (const void* a, const void* b) {
   return (a0->d - b0->d);
 }
 
-Divisor init_divisor(int d, int r) {
-  Divisor div;
+Divisor* init_divisor (int d, int r) {
+  Divisor* div;
 
   int n; 
   int empty;
@@ -79,16 +82,23 @@ Divisor init_divisor(int d, int r) {
   n = d * ((r / d) - 1);
   empty = d % n;
 
-  div.d = d;
-  div.n_required = n;
-  div.n_empty = empty;
-  div.matches = init_ring(empty == 0 ? r / 2 : r);
+  div = malloc(sizeof(*div));
+
+  div->d = d;
+  div->n_required = n;
+  div->n_empty = empty;
+  div->matches = init_ring(empty == 0 ? r / 2 : r);
 
   return div;
 }
 
+void free_divisor (Divisor* div) {
+  free_ring(div->matches);
+  free(div);
+}
+
 void find_divisors(SeqState* st, int r) {
-  Divisor* divisors;
+  Divisor** divisors;
 
   int i = 2;
   int n = 1;
@@ -118,10 +128,6 @@ void find_divisors(SeqState* st, int r) {
 
   qsort(divisors, n, sizeof(*divisors), compare);
 
-  /* for (int j = 0; j < n; j++) { */
-  /*   fprintf(stderr, "%i\n", divisors[j].n_required); */
-  /* } */
-
   st->divisors = divisors;
   st->n_divisors = n;
 }
@@ -140,7 +146,6 @@ void print_entryN (SeqState* st, int i, int n) {
     }
 
     print_entry(st->chr, i - n, i, st->unit_buffer);
-
   }
 }
 
@@ -157,10 +162,10 @@ int all_true (Divisor* div, const int i) {
 }
 
 int valid_repeat (SeqState* st, const int i) {
-  Divisor* d;
+  Divisor** d;
 
   for (d = st->divisors; d < st->divisors + st->n_divisors; d++) {
-    if (all_true(d, i)) {
+    if (all_true(*d, i)) {
       return 0;
     }
   }
@@ -179,15 +184,40 @@ void update_match (Ring* last_bases, Divisor* div, const int i) {
 
 void update_matches (SeqState* st, const int i) {
   for (int j = 0; j < st->div_index; j++) {
-    update_match(st->last_bases, &st->divisors[j], i);
+    update_match(st->last_bases, st->divisors[j], i);
   }
 }
 
-/* int find_next_n (struct seq_state* st, int i, int r, char c) { */
-/*   write_ring(st->last_bases, i, c); */
-/*   update_matches(st, i); */
-/*   return r - !valid_repeat(st, i); */
-/* } */
+SeqState* init_seq_state (char* chr, int r, int l) {
+  SeqState* st;
+
+  st = malloc(sizeof(*st));
+
+  st->last_bases = init_ring(r);
+  st->div_index = 0;
+  st->length = l;
+  st->chr = chr;
+  st->unit_buffer = malloc((r + 1) * sizeof(char));
+  st->unit_buffer[r] = '\0';
+  st->is_even = !(r % 2);
+
+  find_divisors(st, r);
+
+  return st;
+}
+
+void free_seq_state (SeqState* st) {
+  for (int j = 0; j < st->n_divisors; j++) {
+    free_divisor(st->divisors[j]);
+  }
+
+  free_ring(st->last_bases);
+
+  free(st->divisors);
+  free(st->unit_buffer);
+
+  free(st);
+}
 
 void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
   SeqState* st;
@@ -199,41 +229,11 @@ void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
   int j;
   int k;
   int shift;
-  int is_even;
 
-  is_even = !(r % 2);
-
-  st = malloc(sizeof(*st));
-
-  st->last_bases = init_ring(r);
-  st->div_index = 0;
-  st->length = l;
-  st->chr = chr;
-  st->unit_buffer = malloc((r + 1) * sizeof(char));
-  st->unit_buffer[r] = '\0';
-
-  find_divisors(st, r);
+  st = init_seq_state(chr, r, l);
 
   while (1) {
     c = fgetc(fp);
-
-    /* fprintf(stderr, "---\n"); */
-    /* fprintf(stderr, "i = %i\n", i); */
-    /* fprintf(stderr, "n = %i\n", n); */
-    /* fprintf(stderr, "c = %c\n", c); */
-    /* fprintf(stderr, "valid = %i\n", valid_repeat(st, i)); */
-    /* for (int j = 0; j < r; j++) { */
-    /*   fprintf(stderr, "%c", read_ring(st->last_bases, i - j)); */
-    /* } */
-    /* fprintf(stderr, "\n"); */
-    /* for (int j = 0; j < st->n_divisors; j++) { */
-    /*   fprintf(stderr, "d = %i\n", st->divisors[j].d); */
-    /*   /\* for (int k = 0; k < st->divisors[j].n_required; k++) { *\/ */
-    /*   for (int k = 0; k < st->divisors[j].matches->n; k++) { */
-    /*     fprintf(stderr, "%i", read_ring(st->divisors[j].matches, i - k)); */
-    /*   } */
-    /*   fprintf(stderr, "\n"); */
-    /* } */
 
     // ignore newlines
     if (c != '\n') {
@@ -250,7 +250,7 @@ void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
       } else if (n < r - 1) {
         write_ring(st->last_bases, i, c);
         update_matches(st, i);
-        if (st->div_index <= st->n_divisors && st->divisors[st->div_index].d == n + 1) {
+        if (st->div_index < st->n_divisors && st->divisors[st->div_index]->d == n + 1) {
           st->div_index++;
         }
         n++;
@@ -272,9 +272,9 @@ void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
           // update all divisors with blind arrays
           shift = (n + 1) % r;
           if (shift > 1) {
-            for (j = 0; j < st->n_divisors - is_even; j++) {
-              for (k = max(1, shift - st->divisors[j].n_empty); k < shift; k++) {
-                update_match(st->last_bases, &st->divisors[j], i - k);
+            for (j = 0; j < st->n_divisors - st->is_even; j++) {
+              for (k = max(1, shift - st->divisors[j]->n_empty); k < shift; k++) {
+                update_match(st->last_bases, st->divisors[j], i - k);
               }
             }
           }
@@ -286,9 +286,7 @@ void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
     }
   }
 
-  /* TODO also free divisors? */
-  free(st->unit_buffer);
-  free(st);
+  free_seq_state(st);
 }
 
 void scan_seq1(FILE* fp, char* chr, int len) {
