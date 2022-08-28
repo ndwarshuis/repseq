@@ -22,13 +22,13 @@ void print_entry(char* chr, int start, int end, char* unit) {
   printf("%s\t%i\t%i\tunit=%s\n", chr, start, end, unit);
 }
 
-struct ring {
+typedef struct {
   int n;
   int* elements;
-};
+} Ring;
 
-struct ring* init_ring (const int n) {
-  struct ring* r;
+Ring* init_ring (const int n) {
+  Ring* r;
 
   r = malloc(sizeof(*r));
   r->n = n;
@@ -37,41 +37,41 @@ struct ring* init_ring (const int n) {
   return r;
 }
 
-void write_ring (const struct ring* r, const int i, const int c) {
+void write_ring (const Ring* r, const int i, const int c) {
   r->elements[i % r->n] = c;
 }
 
-int read_ring (const struct ring* const r, const int i) {
+int read_ring (const Ring* const r, const int i) {
   return r->elements[i % r->n];
 }
 
-struct divisor {
+typedef struct {
   int d;
   int n_empty;
   int n_required;
-  struct ring* matches;
-};
+  Ring* matches;
+} Divisor;
 
-struct seq_state {
-  struct ring* last_bases;
+typedef struct {
+  Ring* last_bases;
   // TODO make this an array of pointers and not literal divisors?
-  struct divisor* divisors;
+  Divisor* divisors;
   int div_index;
   int n_divisors;
   int length;
   char* chr;
   char* unit_buffer;
-};
+} SeqState;
 
 int compare (const void* a, const void* b) {
-  const struct divisor* a0 = (const struct divisor*)a;
-  const struct divisor* b0 = (const struct divisor*)b;
+  const Divisor* a0 = (const Divisor*)a;
+  const Divisor* b0 = (const Divisor*)b;
 
   return (a0->d - b0->d);
 }
 
-struct divisor init_divisor(int d, int r) {
-  struct divisor div;
+Divisor init_divisor(int d, int r) {
+  Divisor div;
 
   int n; 
   int empty;
@@ -87,8 +87,8 @@ struct divisor init_divisor(int d, int r) {
   return div;
 }
 
-void find_divisors(struct seq_state* st, int r) {
-  struct divisor* divisors;
+void find_divisors(SeqState* st, int r) {
+  Divisor* divisors;
 
   int i = 2;
   int n = 1;
@@ -126,7 +126,7 @@ void find_divisors(struct seq_state* st, int r) {
   st->n_divisors = n;
 }
 
-void print_entryN (struct seq_state* st, int i, int n) {
+void print_entryN (SeqState* st, int i, int n) {
   int r;
   int o;
   int j;
@@ -144,7 +144,7 @@ void print_entryN (struct seq_state* st, int i, int n) {
   }
 }
 
-int all_true (struct divisor* div, const int i) {
+int all_true (Divisor* div, const int i) {
   int j;
 
   for (j = 0; j < div->n_required; j++) {
@@ -156,8 +156,8 @@ int all_true (struct divisor* div, const int i) {
   return 1;
 }
 
-int valid_repeat (struct seq_state* st, const int i) {
-  struct divisor* d;
+int valid_repeat (SeqState* st, const int i) {
+  Divisor* d;
 
   for (d = st->divisors; d < st->divisors + st->n_divisors; d++) {
     if (all_true(d, i)) {
@@ -167,7 +167,7 @@ int valid_repeat (struct seq_state* st, const int i) {
   return 1;
 }
 
-void update_match (struct ring* last_bases, struct divisor* div, const int i) {
+void update_match (Ring* last_bases, Divisor* div, const int i) {
   int c0;
   int c1;
 
@@ -177,7 +177,7 @@ void update_match (struct ring* last_bases, struct divisor* div, const int i) {
   write_ring(div->matches, i, c0 == c1);
 }
 
-void update_matches (struct seq_state* st, const int i) {
+void update_matches (SeqState* st, const int i) {
   for (int j = 0; j < st->div_index; j++) {
     update_match(st->last_bases, &st->divisors[j], i);
   }
@@ -190,7 +190,7 @@ void update_matches (struct seq_state* st, const int i) {
 /* } */
 
 void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
-  struct seq_state* st;
+  SeqState* st;
 
   int c;
   int c0;
