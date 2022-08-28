@@ -4,8 +4,6 @@
 
 #define HEADER_PREFIX '>'
 
-/* helper functions */
-
 #define max(a,b)             \
 ({                           \
     __typeof__ (a) _a = (a); \
@@ -303,7 +301,7 @@ void scan_seqN(FILE* fp, char* chr, const int r, const int l) {
   free_seq_state(st);
 }
 
-void scan_seq1(FILE* fp, char* chr, int len) {
+void scan_seq1(FILE* fp, char* chr, int l) {
   char lastBase[2] = {'N', '\0'};
   int i = 0;
   int n = 1;
@@ -316,7 +314,7 @@ void scan_seq1(FILE* fp, char* chr, int len) {
     if (c != '\n') {
 
       if (c == EOF || c == HEADER_PREFIX) {
-        if (n >= len) {
+        if (n >= l) {
           print_entry(chr, i - n, i, lastBase);
         }
         break;
@@ -329,7 +327,7 @@ void scan_seq1(FILE* fp, char* chr, int len) {
         n++;
 
       } else {
-        if (n >= len) {
+        if (n >= l) {
           print_entry(chr, i - n, i, lastBase);
         }
         n = 1;
@@ -355,7 +353,7 @@ int parse_header(FILE* fp, char* chr) {
 
   c = fscanf(fp, "%31s", chr);
 
-  if (1 != c && EOF != c) {
+  if (c != 1 && c != EOF) {
     printf("Error when parsing chromosome header");
     exit(-1);
   }
@@ -376,7 +374,7 @@ int read_fasta(FILE* fp, int r, int l) {
   seek_char(fp, HEADER_PREFIX);
 
 
-  while (EOF != parse_header(fp, chr)) {
+  while (parse_header(fp, chr) != EOF) {
     fprintf(stderr, "Parsing chromosome %s\n", chr);
 
     if (r == 1) {
