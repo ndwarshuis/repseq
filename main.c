@@ -392,7 +392,7 @@ void scan_seqN(FILE* fp, SeqState* st) {
  */
 
 void scan_seq1(FILE* fp, char* chr, int len) {
-  char lastBase[2] = {'N', '\0'};
+  char last_base[2] = {'N', '\0'};
   int p = 0;
   int n = 1;
   int c;
@@ -402,27 +402,23 @@ void scan_seq1(FILE* fp, char* chr, int len) {
 
     /* ignore newlines */
     if (c != '\n') {
-
       if (c == EOF || c == HEADER_PREFIX) {
         /* ensure we print the last repeat if it is valid */
-        if (n >= len) {
-          print_entry(chr, p, n, lastBase);
+        if (n >= len && last_base[0] != 'N') {
+          print_entry(chr, p, n, last_base);
         }
         break;
 
-      } else if (c == 'N') {
-        n = 1;
-        lastBase[0] = c;
-
-      } else if (c == lastBase[0]) {
+      } else if (c == last_base[0]) {
         n++;
 
       } else {
-        if (n >= len) {
-          print_entry(chr, p, n, lastBase);
+        if (n >= len && last_base[0] != 'N') {
+          print_entry(chr, p, n, last_base);
         }
         n = 1;
-        lastBase[0] = c;
+        last_base[0] = c;
+
       }
       p++;
     }
