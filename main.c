@@ -13,44 +13,13 @@ void print_entry(char* chr, int p, char n, char* unit) {
 }
 
 /******************************************************************************* 
-  Simple ring buffer
-*/
-
-typedef struct {
-  int size;
-  char* elements;
-} Ring;
-
-Ring* init_ring (const int size) {
-  Ring* ring;
-
-  ring = malloc(sizeof(*ring));
-  ring->size = size;
-  ring->elements = malloc(size * sizeof(char));
-
-  return ring;
-}
-
-void free_ring (Ring* ring) {
-  free(ring->elements);
-  free(ring);
-}
-
-void write_ring (const Ring* ring, const int i, const int c) {
-  ring->elements[i % ring->size] = c;
-}
-
-int read_ring (const Ring* const ring, const int i) {
-  return ring->elements[i % ring->size];
-}
-
-/******************************************************************************* 
   The state of the polynucleotide repeat scanning loop
 */
 
 typedef struct SeqState {
-  Ring* last_bases;
+  char* last_bases;
   int length;
+  int repsize;
   int (*invalid_repeat)(struct SeqState *st);
   char* chr;
   char* unit_buffer;
@@ -59,7 +28,7 @@ typedef struct SeqState {
 int invalid_repeat2 (SeqState* st) {
   char *lb;
 
-  lb = st->last_bases->elements;
+  lb = st->last_bases;
 
   /* Repeat is invalid if it is 2-mer homopolymer */
   return lb[0] == lb[1];
@@ -68,7 +37,7 @@ int invalid_repeat2 (SeqState* st) {
 int invalid_repeat3 (SeqState* st) {
   char *lb;
 
-  lb = st->last_bases->elements;
+  lb = st->last_bases;
 
   /* Repeat is invalid if it is 3-mer homopolymer */
   return lb[0] == lb[1] && lb[1] == lb[2];
@@ -77,7 +46,7 @@ int invalid_repeat3 (SeqState* st) {
 int invalid_repeat4 (SeqState* st) {
   char *lb;
 
-  lb = st->last_bases->elements;
+  lb = st->last_bases;
 
   /*
     Repeat is invalid if it has two identical dinuc repeats (which will also
@@ -91,19 +60,24 @@ SeqState* init_seq_state (char* chr, int rep, int len) {
 
   st = malloc(sizeof(*st));
 
-  st->last_bases = init_ring(rep);
+  st->last_bases = malloc(rep * sizeof(char));
   st->length = len;
+  st->repsize = rep;
   st->chr = chr;
   st->unit_buffer = malloc((rep + 1) * sizeof(char));
   st->unit_buffer[rep] = '\0';
 
-  if (rep == 2) {
-    st->invalid_repeat = &invalid_repeat2;
-  } else if (rep == 3) {
-    st->invalid_repeat = &invalid_repeat3;
-  } else if (rep == 4) {
-    st->invalid_repeat = &invalid_repeat4;
-  } else {
+  switch (rep) {
+    case 2:
+      st->invalid_repeat = &invalid_repeat2;
+      break;
+    case 3: 
+      st->invalid_repeat = &invalid_repeat3;
+      break;
+    case 4: 
+      st->invalid_repeat = &invalid_repeat4;
+      break;
+  default: 
     fprintf(stderr, "invalid r (this should never happen)\n");
     exit(-1);
   }
@@ -112,7 +86,7 @@ SeqState* init_seq_state (char* chr, int rep, int len) {
 }
 
 void free_seq_state (SeqState* st) {
-  free_ring(st->last_bases);
+  free(st->last_bases);
   free(st->unit_buffer);
   free(st);
 }
@@ -140,30 +114,30 @@ void free_seq_state (SeqState* st) {
  */
 
 void print_entryN (SeqState* st, int p, int n) {
-  int r, o, j;
+  int o, j;
 
   if (n >= st->length) {
-    r = st->last_bases->size;
-    o = (p - n) % r;
+    o = p - n;
 
-    for (j = 0; j < r; j++) {
-      st->unit_buffer[j] = read_ring(st->last_bases, (j + o));
+    for (j = 0; j < st->repsize; j++) {
+      st->unit_buffer[j] = st->last_bases[(j + o) % st->repsize];
     }
 
     print_entry(st->chr, p, n, st->unit_buffer);
   }
 }
 
-int next_n (SeqState* st, int p, int c) {
-  write_ring(st->last_bases, p, c);
-  return st->last_bases->size - st->invalid_repeat(st);
+int next_n (SeqState *st, int i, int c) {
+  st->last_bases[i] = c;
+  return st->repsize - st->invalid_repeat(st);
 }
 
-void scan_seqN(FILE* fp, SeqState* st) {
-  int c, c0;
+void scan_seqN (FILE* fp, SeqState* st) {
+  int c;
   int p = 0;
   int n = 0;
-  int q = st->last_bases->size - 1;
+  int i = 0;
+  int q = st->repsize - 1;
 
   while (1) {
     c = fgetc(fp);
@@ -182,23 +156,29 @@ void scan_seqN(FILE* fp, SeqState* st) {
 
       } else {
         if (n < q) {
-          write_ring(st->last_bases, p, c);
+          st->last_bases[i] = c;
           n++;
 
         } else if (n > q) {
-          c0 = read_ring(st->last_bases, p);
-          if (c0 == c) {
+          if (st->last_bases[i] == c) {
             n++;
           } else {
             print_entryN(st, p, n);
-            n = next_n(st, p, c);
+            n = next_n(st, i, c);
           }
 
         } else {
-          n = next_n(st, p, c);
+          st->last_bases[i] = c;
+          n = next_n(st, i, c);
         }
       }
       p++;
+      /* super fast 'modulo operator' */
+      if (i == q) {
+        i = 0;
+      } else {
+        i++;
+      }
     }
   }
 }
