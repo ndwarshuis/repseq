@@ -159,17 +159,17 @@ void scan_seqN (FILE* fp, SeqState* st) {
           st->last_bases[i] = c;
           n++;
 
-        } else if (n > q) {
+        } else if (n == q) {
+          st->last_bases[i] = c;
+          n = next_n(st, i, c);
+
+        } else {
           if (st->last_bases[i] == c) {
             n++;
           } else {
             print_entryN(st, p, n);
             n = next_n(st, i, c);
           }
-
-        } else {
-          st->last_bases[i] = c;
-          n = next_n(st, i, c);
         }
       }
       p++;
