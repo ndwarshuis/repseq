@@ -3,92 +3,14 @@
 #include <math.h>
 
 #define HEADER_PREFIX '>'
+#define MAXREP 4
 
 /******************************************************************************* 
   Various helper functions
 */
 
-void print_entry(char* chr, int p, char n, int* unit) {
-  printf("%s\t%i\t%i\tunit=%s\n", chr, p - n, p, (char*)unit);
-}
-
-/******************************************************************************* 
-  The state of the polynucleotide repeat scanning loop
-*/
-
-typedef struct SeqState {
-  char* last_bases;
-  int length;
-  int repsize;
-  int (*invalid_repeat)(struct SeqState *st);
-  char* chr;
-  int* unit_buffer;
-} SeqState;
-
-int invalid_repeat2 (SeqState* st) {
-  char *lb;
-
-  lb = st->last_bases;
-
-  /* Repeat is invalid if it is 2-mer homopolymer */
-  return lb[0] == lb[1];
-}
-
-int invalid_repeat3 (SeqState* st) {
-  char *lb;
-
-  lb = st->last_bases;
-
-  /* Repeat is invalid if it is 3-mer homopolymer */
-  return lb[0] == lb[1] && lb[1] == lb[2];
-}
-
-int invalid_repeat4 (SeqState* st) {
-  char *lb;
-
-  lb = st->last_bases;
-
-  /*
-    Repeat is invalid if it has two identical dinuc repeats (which will also
-    exclude 4-mer homopolymers)
-  */
-  return lb[0] == lb[2] && lb[1] == lb[3];
-}
-
-SeqState* init_seq_state (char* chr, int rep, int len) {
-  SeqState* st;
-
-  st = malloc(sizeof(*st));
-
-  st->last_bases = malloc(rep * sizeof(char));
-  st->length = len;
-  st->repsize = rep;
-  st->chr = chr;
-  st->unit_buffer = malloc((rep + 1) * sizeof(int));
-  st->unit_buffer[rep] = '\0';
-
-  switch (rep) {
-    case 2:
-      st->invalid_repeat = &invalid_repeat2;
-      break;
-    case 3: 
-      st->invalid_repeat = &invalid_repeat3;
-      break;
-    case 4: 
-      st->invalid_repeat = &invalid_repeat4;
-      break;
-  default: 
-    fprintf(stderr, "invalid r (this should never happen)\n");
-    exit(-1);
-  }
-
-  return st;
-}
-
-void free_seq_state (SeqState* st) {
-  free(st->last_bases);
-  free(st->unit_buffer);
-  free(st);
+void print_entry(char* chr, int p, char n, char* unit) {
+  printf("%s\t%i\t%i\tunit=%s\n", chr, p - n, p, unit);
 }
 
 /******************************************************************************* 
@@ -113,31 +35,63 @@ void free_seq_state (SeqState* st) {
   homopolymers).
  */
 
-void print_entryN (SeqState* st, int p, int n) {
+int invalid_repeat2 (int lb[MAXREP]) {
+  /* Repeat is invalid if it is 2-mer homopolymer */
+  return lb[0] == lb[1];
+}
+
+int invalid_repeat3 (int lb[MAXREP]) {
+  /* Repeat is invalid if it is 3-mer homopolymer */
+  return lb[0] == lb[1] && lb[1] == lb[2];
+}
+
+int invalid_repeat4 (int lb[MAXREP]) {
+  /*
+    Repeat is invalid if it has two identical dinuc repeats (which will also
+    exclude 4-mer homopolymers)
+  */
+  return lb[0] == lb[2] && lb[1] == lb[3];
+}
+
+void print_entryN (char* chr, int rep, int len, int p, int n, int lb[MAXREP]) {
   int o, j;
 
-  if (n >= st->length) {
+  if (n >= len) {
+    char unit_buffer[MAXREP + 1];
     o = p - n;
 
-    for (j = 0; j < st->repsize; j++) {
-      st->unit_buffer[j] = st->last_bases[(j + o) % st->repsize];
+    for (j = 0; j < rep; j++) {
+      unit_buffer[j] = lb[(j + o) % rep];
     }
+    unit_buffer[rep] = '\0';
 
-    print_entry(st->chr, p, n, st->unit_buffer);
+    print_entry(chr, p, n, unit_buffer);
   }
 }
 
-int next_n (SeqState *st, int i, int c) {
-  st->last_bases[i] = c;
-  return st->repsize - st->invalid_repeat(st);
-}
-
-void scan_seqN (FILE* fp, SeqState* st) {
+void scan_seqN (FILE* fp, char* chr, int rep, int len) {
   int c;
   int p = 0;
   int n = 0;
   int i = 0;
-  int q = st->repsize - 1;
+  int q = rep - 1;
+  int last_bases[MAXREP];
+  int (*invalid_repeat)(int lb[MAXREP]);
+
+  switch (rep) {
+  case 2:
+    invalid_repeat = &invalid_repeat2;
+    break;
+  case 3: 
+    invalid_repeat = &invalid_repeat3;
+    break;
+  case 4: 
+    invalid_repeat = &invalid_repeat4;
+    break;
+  default: 
+    fprintf(stderr, "invalid r (this should never happen)\n");
+    exit(-1);
+  }
 
   while (1) {
     c = fgetc(fp);
@@ -146,29 +100,30 @@ void scan_seqN (FILE* fp, SeqState* st) {
     if (c != '\n') {
 
       if (c == 'N') {
-        print_entryN(st, p, n);
+        print_entryN(chr, rep, len, p, n, last_bases);
         n = 0;
 
       } else if (c == EOF || c == HEADER_PREFIX) {
         /* ensure last repeat is printed if long enough */
-        print_entryN(st, p, n);
+        print_entryN(chr, rep, len, i, n, last_bases);
         break;
 
       } else {
         if (n < q) {
-          st->last_bases[i] = c;
+          last_bases[i] = c;
           n++;
 
         } else if (n == q) {
-          st->last_bases[i] = c;
-          n = next_n(st, i, c);
+          last_bases[i] = c;
+          n = rep - invalid_repeat(last_bases);
 
         } else {
-          if (st->last_bases[i] == c) {
+          if (last_bases[i] == c) {
             n++;
           } else {
-            print_entryN(st, p, n);
-            n = next_n(st, i, c);
+            print_entryN(chr, rep, len, p, n, last_bases);
+            last_bases[i] = c;
+            n = rep - invalid_repeat(last_bases);
           }
         }
       }
@@ -192,7 +147,7 @@ void scan_seqN (FILE* fp, SeqState* st) {
  */
 
 void scan_seq1 (FILE* fp, char* chr, int len) {
-  int last_base[2] = {'N', '\0'};
+  char last_base[2] = {'N', '\0'};
   int p = 0;
   int n = 1;
   int c;
@@ -257,7 +212,6 @@ int parse_header(FILE* fp, char* chr) {
 
 int read_fasta(FILE* fp, int rep, int len) {
   char chr[32];
-  SeqState* st;
   int is_homopoly;
 
   if (len <= rep) {
@@ -265,7 +219,7 @@ int read_fasta(FILE* fp, int rep, int len) {
     exit(-1);
   }
 
-  if (4 < rep) {
+  if (MAXREP < rep) {
     fprintf(stderr, "Repeat length must be in [1,4]\n");
     exit(-1);
   }
@@ -286,7 +240,6 @@ int read_fasta(FILE* fp, int rep, int len) {
 
   if (!is_homopoly) {
     fprintf(stderr, "Finding polynuc repeats >=%ibp with unit size %ibp\n", rep, len);
-    st = init_seq_state(chr, rep, len);
   } else {
     fprintf(stderr, "Finding homopolymers >=%ibp\n", len);
   }
@@ -301,12 +254,8 @@ int read_fasta(FILE* fp, int rep, int len) {
     if (is_homopoly) {
       scan_seq1(fp, chr, len);
     } else {
-      scan_seqN(fp, st);
+      scan_seqN(fp, chr, rep, len);
     }
-  }
-
-  if (!is_homopoly) {
-    free_seq_state(st);
   }
 
   return 0;
