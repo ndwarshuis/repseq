@@ -46,8 +46,8 @@ int invalid_repeat3 (int lb[MAXREP]) {
 
 int invalid_repeat4 (int lb[MAXREP]) {
   /*
-    Repeat is invalid if it has two identical dinuc repeats (which will also
-    exclude 4-mer homopolymers)
+    Repeat is invalid if it has two identical 2-mers (which also excludes 4-mer
+    homopolymers)
   */
   return lb[0] == lb[2] && lb[1] == lb[3];
 }
@@ -213,18 +213,18 @@ int read_fasta(FILE* fp, int rep, int len) {
   char chr[32];
   int is_homopoly;
 
-  if (len <= rep) {
-    fprintf(stderr, "Repeat length must be less than total length\n");
-    exit(-1);
-  }
-
-  if (MAXREP < rep) {
+  if (!(1 <= rep && rep <= MAXREP)) {
     fprintf(stderr, "Repeat length must be in [1,4]\n");
     exit(-1);
   }
 
+  if (!(len >= rep)) {
+    fprintf(stderr, "Total length must be >= repeat length\n");
+    exit(-1);
+  }
+
   if (fp == NULL) {
-    fprintf(stderr, "Error in opening file\n");
+    fprintf(stderr, "Error opening file\n");
     exit(-1);
   }
 
@@ -234,11 +234,10 @@ int read_fasta(FILE* fp, int rep, int len) {
   */
   seek_char(fp, HEADER_PREFIX);
 
-  /* Initialize polynuc struct once if needed */
   is_homopoly = rep == 1;
 
   if (!is_homopoly) {
-    fprintf(stderr, "Finding polynuc repeats >=%ibp with unit size %ibp\n", rep, len);
+    fprintf(stderr, "Finding %i-mer repeats >=%ibp\n", rep, len);
   } else {
     fprintf(stderr, "Finding homopolymers >=%ibp\n", len);
   }
