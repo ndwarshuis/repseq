@@ -3,14 +3,7 @@
 
 #define HEADER_PREFIX '>'
 #define MAXREP 4
-
-/******************************************************************************* 
-  Various helper functions
-*/
-
-void print_entry(char* chr, int p, char n, char* unit) {
-  printf("%s\t%i\t%i\tunit=%s\n", chr, p - n, p, unit);
-}
+#define BED_FMT(f) "%s\t%i\t%i\tunit=%" #f "\n"
 
 /******************************************************************************* 
   Scan chromosome for polynucleotide repeats.
@@ -64,7 +57,7 @@ void print_entryN (char* chr, int rep, int len, int p, int n, int lb[MAXREP]) {
     }
     unit_buffer[rep] = '\0';
 
-    print_entry(chr, p, n, unit_buffer);
+    printf(BED_FMT(s), chr, p - n, p, unit_buffer);
   }
 }
 
@@ -146,7 +139,7 @@ void scan_seqN (FILE* fp, char* chr, int rep, int len) {
  */
 
 void scan_seq1 (FILE* fp, char* chr, int len) {
-  char last_base[2] = {'N', '\0'};
+  char last_base = 'N';
   int p = 0;
   int n = 1;
   int c;
@@ -156,22 +149,18 @@ void scan_seq1 (FILE* fp, char* chr, int len) {
 
     /* ignore newlines */
     if (c != '\n') {
-      if (c == EOF || c == HEADER_PREFIX) {
-        /* ensure we print the last repeat if it is valid */
-        if (n >= len && last_base[0] != 'N') {
-          print_entry(chr, p, n, last_base);
-        }
-        break;
-
-      } else if (c == last_base[0]) {
+      if (c == last_base) {
         n++;
 
       } else {
-        if (n >= len && last_base[0] != 'N') {
-          print_entry(chr, p, n, last_base);
+        if (n >= len && last_base != 'N') {
+          printf(BED_FMT(c), chr, p - n, p, last_base);
+        }
+        if (c == EOF || c == HEADER_PREFIX) {
+          break;
         }
         n = 1;
-        last_base[0] = c;
+        last_base = c;
 
       }
       p++;
