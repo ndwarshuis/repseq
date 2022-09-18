@@ -8,8 +8,8 @@
   Various helper functions
 */
 
-void print_entry(char* chr, int p, char n, char* unit) {
-  printf("%s\t%i\t%i\tunit=%s\n", chr, p - n, p, unit);
+void print_entry(char* chr, int p, char n, int* unit) {
+  printf("%s\t%i\t%i\tunit=%s\n", chr, p - n, p, (char*)unit);
 }
 
 /******************************************************************************* 
@@ -22,7 +22,7 @@ typedef struct SeqState {
   int repsize;
   int (*invalid_repeat)(struct SeqState *st);
   char* chr;
-  char* unit_buffer;
+  int* unit_buffer;
 } SeqState;
 
 int invalid_repeat2 (SeqState* st) {
@@ -64,7 +64,7 @@ SeqState* init_seq_state (char* chr, int rep, int len) {
   st->length = len;
   st->repsize = rep;
   st->chr = chr;
-  st->unit_buffer = malloc((rep + 1) * sizeof(char));
+  st->unit_buffer = malloc((rep + 1) * sizeof(int));
   st->unit_buffer[rep] = '\0';
 
   switch (rep) {
@@ -192,7 +192,7 @@ void scan_seqN (FILE* fp, SeqState* st) {
  */
 
 void scan_seq1(FILE* fp, char* chr, int len) {
-  char last_base[2] = {'N', '\0'};
+  int last_base[2] = {'N', '\0'};
   int p = 0;
   int n = 1;
   int c;
