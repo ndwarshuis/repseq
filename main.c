@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 
 #define HEADER_PREFIX '>'
 #define MAXREP 4
