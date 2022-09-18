@@ -191,7 +191,7 @@ void scan_seqN (FILE* fp, SeqState* st) {
   repeated sequences is longer than our minimum, print it.
  */
 
-void scan_seq1(FILE* fp, char* chr, int len) {
+void scan_seq1 (FILE* fp, char* chr, int len) {
   int last_base[2] = {'N', '\0'};
   int p = 0;
   int n = 1;
@@ -202,20 +202,23 @@ void scan_seq1(FILE* fp, char* chr, int len) {
 
     /* ignore newlines */
     if (c != '\n') {
-      if (c == last_base[0]) {
+      if (c == EOF || c == HEADER_PREFIX) {
+        /* ensure we print the last repeat if it is valid */
+        if (n >= len && last_base[0] != 'N') {
+          print_entry(chr, p, n, last_base);
+        }
+        break;
+
+      } else if (c == last_base[0]) {
         n++;
 
       } else {
         if (n >= len && last_base[0] != 'N') {
           print_entry(chr, p, n, last_base);
         }
+        n = 1;
+        last_base[0] = c;
 
-        if (c == EOF || c == HEADER_PREFIX) {
-          break;
-        } else {
-          n = 1;
-          last_base[0] = c;
-        }
       }
       p++;
     }
