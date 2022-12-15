@@ -1,242 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 
 #define HEADER_PREFIX '>'
-
-/******************************************************************************* 
-  Various helper functions
-*/
-
-void print_entry(char* chr, int p, int n, char* unit) {
-  printf("%s\t%i\t%i\tunit=%s\n", chr, p - n, p, unit);
-}
-
-int* expand_array (int size, int* result) {
-  int* tmp;
-
-  tmp = realloc(result, size * sizeof(*result));
-
-  if (tmp == NULL) {
-    printf("Error expanding array");
-    exit(-1);
-  } else {
-    return tmp;
-  }
-}
-
-/******************************************************************************* 
-  Divisor functions
-*/
-
-int int_compare (const void* a, const void* b) {
-  const int* a0 = (const int*)a;
-  const int* b0 = (const int*)b;
-
-  return (a0 - b0);
-}
-
-int* find_divisors (int x, int* k) {
-  int* candidates;
-
-  int i = 2;
-  int is_mid;
-  int u;
-
-  *k = 1;
-
-  candidates = malloc(*k * sizeof(int));
-
-  candidates[0] = 1;
-
-  u = floor(sqrt(x));
-
-  while (i <= u) {
-    if (x % i == 0) {
-      is_mid = x / i == i;
-      *k = *k + 1 + !is_mid;
-      candidates = expand_array(*k, candidates);
-      candidates[*k - 1] = i;
-      if (!is_mid) {
-        candidates[*k - 2] = x / i;
-      }
-    }
-    i++;
-  }
-
-  qsort(candidates, *k, sizeof(int), int_compare);
-
-  return candidates;
-}
-
-/*
-  'exclusive divisor' = 'divisor that doesn't divide any other divisors'
-*/
-int* find_exclusive_divisors (int x, int* k) {
-  int i, j, d;
-  int* candidates;
-  int* result;
-
-  *k = 1;
-
-  result = malloc(*k * sizeof(int));
-
-  candidates = find_divisors(x, &d);
-
-  for (i = 0; i < d - 1; i++) {
-    j = i + 1;
-    while (candidates[j] % candidates[i] > 0 && j < d) {
-      j++;
-    }
-    if (j == d) {
-      (*k)++;
-      result = expand_array(*k, result);
-      result[*k - 2] = candidates[j];
-    }
-  }
-
-  result[*k - 1] = candidates[d - 1];
-
-  free(candidates);
-
-  return result;
-}
-
-/******************************************************************************* 
-  Simple ring buffer
-*/
-
-typedef struct {
-  int size;
-  int* elements;
-} Ring;
-
-Ring* init_ring (const int size) {
-  Ring* ring;
-
-  ring = malloc(sizeof(*ring));
-  ring->size = size;
-  ring->elements = malloc(size * sizeof(int));
-
-  return ring;
-}
-
-void free_ring (Ring* ring) {
-  free(ring->elements);
-  free(ring);
-}
-
-void write_ring (const Ring* ring, const int i, const int c) {
-  ring->elements[i % ring->size] = c;
-}
-
-int read_ring (const Ring* const ring, const int i) {
-  return ring->elements[i % ring->size];
-}
-
-/******************************************************************************* 
-  Submatch buffer (for testing if a given repeat has smaller repeats in it)
-*/
-
-typedef struct {
-  int d;
-  Ring* matches;
-} SubMatch;
-
-SubMatch* init_submatch (int d, int rep) {
-  SubMatch* sm;
-
-  sm = malloc(sizeof(*sm));
-
-  sm->d = d;
-  sm->matches = init_ring(d * ((rep / d) - 1));
-
-  return sm;
-}
-
-void free_submatch (SubMatch* sm) {
-  free_ring(sm->matches);
-  free(sm);
-}
-
-int all_match (SubMatch* sm) {
-  for (int i = 0; i < sm->matches->size; i++) {
-    if (!sm->matches->elements[i]) {
-      return 0;
-    }
-  }
-
-  return 1;
-}
-
-/******************************************************************************* 
-  The state of the polynucleotide repeat scanning loop
-*/
-
-typedef struct {
-  Ring* last_bases;
-  SubMatch** submatches;
-  int submatch_index;
-  int n_submatches;
-  int length;
-  char* chr;
-  char* unit_buffer;
-} SeqState;
-
-void init_submatches (SeqState* st, int rep) {
-  SubMatch** sms;
-
-  int* xdivisors = NULL;
-  int i, k;
-
-  xdivisors = find_exclusive_divisors(rep, &k);
-
-  sms = malloc(k * sizeof(*sms));
-
-  for (i = 0; i < k; i++) {
-    sms[i] = init_submatch(xdivisors[i], rep);
-  }
-
-  st->submatches = sms;
-  st->n_submatches = k;
-}
-
-SeqState* init_seq_state (char* chr, int rep, int len) {
-  SeqState* st;
-
-  st = malloc(sizeof(*st));
-
-  st->last_bases = init_ring(rep);
-  st->submatch_index = 0;
-  st->length = len;
-  st->chr = chr;
-  st->unit_buffer = malloc((rep + 1) * sizeof(char));
-  st->unit_buffer[rep] = '\0';
-
-  init_submatches(st, rep);
-
-  fprintf(stderr, "Will ignore subrepeats of the following lengths:");
-  for (int i = 0; i < st->n_submatches; i++) {
-    fprintf(stderr, " %i", st->submatches[i]->d);
-  }
-  fprintf(stderr, "\n");
-   
-
-  return st;
-}
-
-void free_seq_state (SeqState* st) {
-  for (int j = 0; j < st->n_submatches; j++) {
-    free_submatch(st->submatches[j]);
-  }
-
-  free_ring(st->last_bases);
-
-  free(st->submatches);
-  free(st->unit_buffer);
-
-  free(st);
-}
+#define MAXREP 4
+#define BED_FMT(f) "%s\t%i\t%i\tunit=%" #f "\n"
 
 /******************************************************************************* 
   Scan chromosome for polynucleotide repeats.
@@ -252,86 +19,71 @@ void free_seq_state (SeqState* st) {
   else write the new base to the buffer to make a new repeat target and reset
   'n' to 'r' or 'r' - 1 depending on if the new repeat is valid (see next).
 
-  Subpattern filtering: We need to not print entries that are composed of
-  repeats with smaller units. To identify what smaller unit sizes to find,
-  determine the exclusive divisors of 'r' (eg divisors which do not divide other
-  divisors of 'r'). For each divisor 'd', make a boolean array to represent all
-  matches between all pairs in the current candidate repeat that are 'd' bp away
-  from each other (without wraparound). When scanning through the sequence,
-  track the match for each divisor between the current base and the base 'd' bp
-  behind. A candidate repeat sequence will be 'valid' if none of these arrays
-  are entirely true.
-
-  NOTE: the arrays for the repeat buffer and subpattern matches are all
-  represented as circular arrays that are indexed modulo the current position in
-  the chromosome.
+  Subpattern filtering: Just finding a repeat is not enough; we need to
+  determine if the repeat has any "smaller" repeats inside it to consider it
+  valid. For now, repeats of length 2, 3, and 4 are hardcoded for speed. 2 and
+  3-mer repeats are checked to see if they are homopolymers (eg all bases the
+  same) and 4-mers are checked for 2 identical 2-mer (which also excludes
+  homopolymers).
  */
 
-void print_entryN (SeqState* st, int p, int n) {
-  int r, o, j;
+int invalid_repeat2 (int lb[MAXREP]) {
+  /* Repeat is invalid if it is 2-mer homopolymer */
+  return lb[0] == lb[1];
+}
 
-  if (n >= st->length) {
-    r = st->last_bases->size;
-    o = (p - n) % r;
+int invalid_repeat3 (int lb[MAXREP]) {
+  /* Repeat is invalid if it is 3-mer homopolymer */
+  return lb[0] == lb[1] && lb[1] == lb[2];
+}
 
-    for (j = 0; j < r; j++) {
-      st->unit_buffer[j] = read_ring(st->last_bases, (j + o));
+int invalid_repeat4 (int lb[MAXREP]) {
+  /*
+    Repeat is invalid if it has two identical 2-mers (which also excludes 4-mer
+    homopolymers)
+  */
+  return lb[0] == lb[2] && lb[1] == lb[3];
+}
+
+void print_entryN (char* chr, int rep, int len, int p, int n, int lb[MAXREP]) {
+  int o, j;
+
+  if (n >= len) {
+    char unit_buffer[MAXREP + 1];
+    o = p - n;
+
+    for (j = 0; j < rep; j++) {
+      unit_buffer[j] = lb[(j + o) % rep];
     }
+    unit_buffer[rep] = '\0';
 
-    print_entry(st->chr, p, n, st->unit_buffer);
+    printf(BED_FMT(s), chr, p - n, p, unit_buffer);
   }
 }
 
-int invalid_repeat (SeqState* st) {
-  SubMatch** d;
-
-  for (d = st->submatches; d < st->submatches + st->n_submatches; d++) {
-    if (all_match(*d)) {
-      return 1;
-    }
-  }
-  return 0;
-}
-
-void update_match (Ring* last_bases, SubMatch* sm, const int p) {
-  int c0;
-  int c1;
-
-  c0 = read_ring(last_bases, p);
-  c1 = read_ring(last_bases, (p - sm->d));
-
-  write_ring(sm->matches, p, c0 == c1);
-}
-
-void update_matches (SeqState* st, const int p) {
-  for (int j = 0; j < st->submatch_index; j++) {
-    update_match(st->last_bases, st->submatches[j], p);
-  }
-}
-
-void update_submatch_index (SeqState* st, int n) {
-  SubMatch** sms = st->submatches;
-  int x = st->submatch_index;
-
-  if (x < st->n_submatches && sms[x]->d == n + 1) {
-    st->submatch_index++;
-  }
-}
-
-int next_n (SeqState* st, int p, int c) {
-  write_ring(st->last_bases, p, c);
-  update_matches(st, p);
-  return st->last_bases->size - invalid_repeat(st);
-}
-
-void scan_seqN(FILE* fp, SeqState* st) {
-  int c, c0;
+void scan_seqN (FILE* fp, char* chr, int rep, int len) {
+  int c;
   int p = 0;
   int n = 0;
-  int r = st->last_bases->size;
+  int i = 0;
+  int q = rep - 1;
+  int last_bases[MAXREP];
+  int (*invalid_repeat)(int lb[MAXREP]);
 
-  /* this should be the only thing we need to reset for each chromosome */
-  st->submatch_index = 0;
+  switch (rep) {
+  case 2:
+    invalid_repeat = &invalid_repeat2;
+    break;
+  case 3: 
+    invalid_repeat = &invalid_repeat3;
+    break;
+  case 4: 
+    invalid_repeat = &invalid_repeat4;
+    break;
+  default: 
+    fprintf(stderr, "invalid r (this should never happen)\n");
+    exit(-1);
+  }
 
   while (1) {
     c = fgetc(fp);
@@ -339,46 +91,41 @@ void scan_seqN(FILE* fp, SeqState* st) {
     /* ignore newlines */
     if (c != '\n') {
 
-      if (c == EOF || c == HEADER_PREFIX) {
+      if (c == 'N') {
+        print_entryN(chr, rep, len, p, n, last_bases);
+        n = 0;
+
+      } else if (c == EOF || c == HEADER_PREFIX) {
         /* ensure last repeat is printed if long enough */
-        print_entryN(st, p, n);
+        print_entryN(chr, rep, len, i, n, last_bases);
         break;
 
-      } else if (c == 'N') {
-        print_entryN(st, p, n);
-        n = 0;
-        st->submatch_index = 0;
-
-      } else if (n < r - 1) {
-        write_ring(st->last_bases, p, c);
-        update_matches(st, p);
-        update_submatch_index(st, n);
-        n++;
-
-      } else if (n == r - 1) {
-        n = next_n(st, p, c);
-
       } else {
-        c0 = read_ring(st->last_bases, p);
-        if (c0 == c) {
+        if (n < q) {
+          last_bases[i] = c;
           n++;
-          /*
-            NOTE: this may seem wasteful since we are updating the submatch
-            buffer(s) even when we know the repeat sequence is valid. However,
-            the buffers for the subpatterns do not evenly divide the repeat
-            sequence and thus will become out of phase as n increases. While it
-            is possible to correct the phase in the alternative to this branch,
-            this requires lots of complex math, which will lead to a larger
-            slowdown given that this branch runs much less frequently (since
-            repeats are relatively rare).
-          */
-          update_matches(st, p);
+
+        } else if (n == q) {
+          last_bases[i] = c;
+          n = rep - invalid_repeat(last_bases);
+
         } else {
-          print_entryN(st, p, n);
-          n = next_n(st, p, c);
+          if (last_bases[i] == c) {
+            n++;
+          } else {
+            print_entryN(chr, rep, len, p, n, last_bases);
+            last_bases[i] = c;
+            n = rep - invalid_repeat(last_bases);
+          }
         }
       }
       p++;
+      /* super fast 'modulo operator' */
+      if (i == q) {
+        i = 0;
+      } else {
+        i++;
+      }
     }
   }
 }
@@ -391,8 +138,8 @@ void scan_seqN(FILE* fp, SeqState* st) {
   repeated sequences is longer than our minimum, print it.
  */
 
-void scan_seq1(FILE* fp, char* chr, int len) {
-  char last_base[2] = {'N', '\0'};
+void scan_seq1 (FILE* fp, char* chr, int len) {
+  char last_base = 'N';
   int p = 0;
   int n = 1;
   int c;
@@ -402,22 +149,18 @@ void scan_seq1(FILE* fp, char* chr, int len) {
 
     /* ignore newlines */
     if (c != '\n') {
-      if (c == EOF || c == HEADER_PREFIX) {
-        /* ensure we print the last repeat if it is valid */
-        if (n >= len && last_base[0] != 'N') {
-          print_entry(chr, p, n, last_base);
-        }
-        break;
-
-      } else if (c == last_base[0]) {
+      if (c == last_base) {
         n++;
 
       } else {
-        if (n >= len && last_base[0] != 'N') {
-          print_entry(chr, p, n, last_base);
+        if (n >= len && last_base != 'N') {
+          printf(BED_FMT(c), chr, p - n, p, last_base);
+        }
+        if (c == EOF || c == HEADER_PREFIX) {
+          break;
         }
         n = 1;
-        last_base[0] = c;
+        last_base = c;
 
       }
       p++;
@@ -457,17 +200,21 @@ int parse_header(FILE* fp, char* chr) {
 
 int read_fasta(FILE* fp, int rep, int len) {
   char chr[32];
-  SeqState* st;
   int is_homopoly;
 
-  if (len <= rep) {
-    fprintf(stderr, "Repeat length must be less than total length\n");
+  if (!(1 <= rep && rep <= MAXREP)) {
+    fprintf(stderr, "Repeat length must be in [1,4]\n");
+    exit(-1);
+  }
+
+  if (!(len >= rep)) {
+    fprintf(stderr, "Total length must be >= repeat length\n");
     exit(-1);
   }
 
   if (fp == NULL) {
-    perror("Error in opening file");
-    return (-1);
+    fprintf(stderr, "Error opening file\n");
+    exit(-1);
   }
 
   /*
@@ -476,13 +223,10 @@ int read_fasta(FILE* fp, int rep, int len) {
   */
   seek_char(fp, HEADER_PREFIX);
 
-
-  /* Initialize polynuc struct once if needed */
   is_homopoly = rep == 1;
 
   if (!is_homopoly) {
-    fprintf(stderr, "Finding polynuc repeats >=%ibp with unit size %ibp\n", rep, len);
-    st = init_seq_state(chr, rep, len);
+    fprintf(stderr, "Finding %i-mer repeats >=%ibp\n", rep, len);
   } else {
     fprintf(stderr, "Finding homopolymers >=%ibp\n", len);
   }
@@ -497,12 +241,8 @@ int read_fasta(FILE* fp, int rep, int len) {
     if (is_homopoly) {
       scan_seq1(fp, chr, len);
     } else {
-      scan_seqN(fp, st);
+      scan_seqN(fp, chr, rep, len);
     }
-  }
-
-  if (!is_homopoly) {
-    free_seq_state(st);
   }
 
   return 0;
