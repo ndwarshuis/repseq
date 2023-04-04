@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define HEADER_PREFIX '>'
 #define MAXREP 4
@@ -252,11 +253,14 @@ int main(int argc, char *argv[]) {
   if (argc == 4) {
     int rep;
     int len;
+    FILE* fp;
 
     rep = atoi(argv[1]);
     len = atoi(argv[2]);
 
-    read_fasta(fopen(argv[3], "r"), rep, len);
+    fp = strcmp(argv[3], "-") == 0 ? stdin : fopen(argv[3], "r");
+
+    read_fasta(fp, rep, len);
   } else {
     printf("Usage: REPS LENGTH INFILE\n");
   }
